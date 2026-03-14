@@ -4,6 +4,7 @@ from utils import get_preprocessed_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig
 import argparse
 import warnings
+import os
 warnings.filterwarnings("ignore")
 
 if __name__ == '__main__':
@@ -21,10 +22,12 @@ if __name__ == '__main__':
     parser.add_argument('--lora_alpha', type=int, default=32, help='lora alpha')
     parser.add_argument('--target_layer', type=str, default='-1', help='target_modules in lora')
     args = parser.parse_args()
-
-    if 'Llama' in args.model:
-        model_name = "/common/public/LLAMA2-HF/" + args.model
-    elif args.model == 'mistral':
+    
+    os.environ["TENSORBOARD_LOGGING_DIR"] = "./logs"
+    
+    # if 'Llama' in args.model:
+    #     model_name = "/common/public/LLAMA2-HF/" + args.model
+    if args.model == 'mistral':
         model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
     elif args.model == 'TinyLlama':
         model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
@@ -37,6 +40,9 @@ if __name__ == '__main__':
         device_map='auto'
     )
     model.config.use_cache = False
+
+    print(f"Model {model_name} loaded successfully.")
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = 'left'
     tokenizer.pad_token = tokenizer.eos_token
@@ -53,12 +59,13 @@ if __name__ == '__main__':
         output_dir="./lora_adapter",
         per_device_train_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
-        logging_dir="./logs",
         logging_steps=args.logging_step,
         save_steps=10,
         save_total_limit=1,
         remove_unused_columns=False
     )
+
+    print(f"Training for {args.epochs} epochs with batch size {args.batch_size}")
 
     if args.target_layer == '-1':
         target_modules = ['q_proj', 'v_proj']
@@ -84,5 +91,11 @@ if __name__ == '__main__':
         train_dataset=train_dataset,
         eval_dataset=eval_dataset
     )
+    
     trainer.train()
-    trainer.save_model("lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs))
+    
+    print("Training completed.")
+    save_path = "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+    print(f"Model saved to: {save_path}")
+    
+    trainer.save_model(save_path)
