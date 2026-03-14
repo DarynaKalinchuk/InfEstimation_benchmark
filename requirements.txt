@@ -1,6 +1,7 @@
-numpy==2.1.2
-pandas==2.2.3
-peft==0.13.2
-torch==2.4.0
-tqdm==4.66.4
-transformers==4.46.0
+numpy==2.0.2
+pandas==2.2.2
+datasets==4.0.0
+peft==0.18.1
+transformers==5.0.0
+torch==2.10.0+cu128
+tqdm==4.67.3

@@ -20,7 +20,9 @@ if __name__ == '__main__':
         model_name = "/common/public/LLAMA2-HF/" + args.model
     elif args.model == 'mistral':
         model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
-    else: raise Exception("model name: [Llama-2-7b-chat-hf, Llama-2-13b-chat-hf, Mistral-7B-Instruct-v0.3]")
+    elif args.model == 'TinyLlama':
+        model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    else: raise Exception("Invalid model name.")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = 'left'

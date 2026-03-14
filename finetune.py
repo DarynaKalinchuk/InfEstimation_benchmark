@@ -26,8 +26,10 @@ if __name__ == '__main__':
         model_name = "/common/public/LLAMA2-HF/" + args.model
     elif args.model == 'mistral':
         model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
-    else: raise Exception("model name: [Llama-2-7b-chat-hf, Llama-2-13b-chat-hf, Mistral-7B-Instruct-v0.3]")
-    
+    elif args.model == 'TinyLlama':
+        model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    else: raise Exception("Invalid model name.")
+
     quantization_config = BitsAndBytesConfig(load_in_8bit=True) if args.load_in_8bit else None
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -55,8 +57,7 @@ if __name__ == '__main__':
         logging_steps=args.logging_step,
         save_steps=10,
         save_total_limit=1,
-        remove_unused_columns=False,
-        evaluation_strategy=evaluation_strategy
+        remove_unused_columns=False
     )
 
     if args.target_layer == '-1':
@@ -81,8 +82,7 @@ if __name__ == '__main__':
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer
+        eval_dataset=eval_dataset
     )
     trainer.train()
     trainer.save_model("lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs))
