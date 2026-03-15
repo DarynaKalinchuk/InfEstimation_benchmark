@@ -95,6 +95,9 @@ def influence_function(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', la
 
         return torch.mean(S) / lambda_const_param
 
+    print(f"Calculating influence with {hvp_cal}.")
+    print(f"All params: lambda_const_param={lambda_const_param}, n_iteration={n_iteration}, alpha_const={alpha_const}.")
+
     if hvp_cal == 'Original':
         for val_id in tqdm(val_grad_dict.keys()):
             for weight_name in val_grad_dict[val_id]:
@@ -156,6 +159,7 @@ def influence_function(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', la
 
             IF_dict[tr_id][val_id] = -if_tmp_value
 
+    print("End of script.")
     return pd.DataFrame(IF_dict, dtype=float)
 
 def check_acc_cov(influence, train_dataset, validation_dataset):
