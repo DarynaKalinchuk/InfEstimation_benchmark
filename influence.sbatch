@@ -5,7 +5,7 @@
 #SBATCH --mem=128G 
 #SBATCH --cpus-per-task=24  
 #SBATCH --gres=gpu:1
-#SBATCH --time=0-1:00:00 
+#SBATCH --time=0-3:00:00 
 #SBATCH --container-workdir=/srv/home/users/kalinchukd23cs/InfEstimation_benchmark
 #SBATCH --nodelist=dgx1
 
@@ -18,7 +18,9 @@ echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="DataInf"
+HVP_METHOD="random"
+INF_ARGS="distribution=uniform"
+INF_ARGS="lambda_const_param=10,n_iteration=10,alpha_const=1."
 
 while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
@@ -29,6 +31,7 @@ while read -r DATASET_NAME; do
         --epochs "$EPOCHS" \
         --hvp_cal "$HVP_METHOD" \
         --template "$TEMPLATE" \
+        --inf_args "$INF_ARGS" \
         --max_length "$MAX_LENGTH"
 
 done < dataset_settings.txt

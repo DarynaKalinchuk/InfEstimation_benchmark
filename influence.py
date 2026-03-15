@@ -1,6 +1,6 @@
 from datasets import load_from_disk
 from transformers import AutoTokenizer
-from utils import get_preprocessed_dataset, collect_gradient, influence_function, check_acc_cov
+from utils import get_preprocessed_dataset, collect_gradient, influence_estimation, check_acc_cov
 import pickle
 import argparse
 import os
@@ -16,6 +16,7 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_c', type=float, default=10, help='lambda const')
     parser.add_argument('--iter', type=int, default=3, help='#iteration')
     parser.add_argument('--alpha', type=float, default=1., help='alpha_const')
+    parser.add_argument('--inf_args', type=str, required=False, help='Other args, method-specific.')
     args = parser.parse_args()
 
     # if 'Llama' in args.model:
@@ -56,9 +57,14 @@ if __name__ == '__main__':
         with open(val_grad_file, 'wb') as f:
             pickle.dump(val_grad_dict, f)
 
-    influence_inf = influence_function(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal)
+    inf_args_map = dict(
+    item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
+    )
+
+    influence_inf = influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
 
     cache_dir = 'cache/' + args.model + '/'
     os.makedirs(cache_dir, exist_ok=True)
     influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
-    check_acc_cov(influence_inf, dataset['train'], dataset['test'])
+    check_acc_cov(influence_inf, dataset['train'], dataset['test'], 
+                  dataset_name = args.dataset, model = args.model, influence_est = args.hvp_cal)

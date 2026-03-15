@@ -6,6 +6,9 @@ from tqdm import tqdm
 from peft import PeftModel
 from collections import defaultdict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+import matplotlib.pyplot as plt
+import os
+import json
 
 def get_preprocessed_dataset(tokenizer, dataset, chat_template, max_length):
     def apply_prompt_template(sample):
@@ -82,7 +85,12 @@ def collect_gradient(model_name, lora_adapter_path, tokenizer, tokenized_tr, tok
             
     return tr_grad_dict, val_grad_dict
 
-def influence_function(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', lambda_const_param=10, n_iteration=10, alpha_const=1.):
+def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', lambda_const_param = 10, n_iteration = 10, alpha_const = 1.):
+    
+    lambda_const_param = int(lambda_const_param)
+    n_iteration = int(n_iteration)
+    alpha_const = float(alpha_const)
+
     hvp_dict = defaultdict(dict)
     IF_dict = defaultdict(dict)
     n_train = len(tr_grad_dict.keys())
@@ -94,9 +102,6 @@ def influence_function(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', la
             S[tr_id] = torch.mean(tmp_grad**2)
 
         return torch.mean(S) / lambda_const_param
-
-    print(f"Calculating influence with {hvp_cal}.")
-    print(f"All params: lambda_const_param={lambda_const_param}, n_iteration={n_iteration}, alpha_const={alpha_const}.")
 
     if hvp_cal == 'Original':
         for val_id in tqdm(val_grad_dict.keys()):
@@ -159,17 +164,21 @@ def influence_function(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', la
 
             IF_dict[tr_id][val_id] = -if_tmp_value
 
-    print("End of script.")
+    print("End of influence estimation.")
     return pd.DataFrame(IF_dict, dtype=float)
 
-def check_acc_cov(influence, train_dataset, validation_dataset):
+def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='', model='', influence_est=''):
     acc = 0
     cov = 0
     cov_cnt = int(len(train_dataset) / len(set(train_dataset['variation'])))
+    
+    val_to_train_scores = {}
+
     for i in range(len(influence)):
         array = -(influence.loc[i].to_numpy())
         indices = np.argpartition(array, -cov_cnt)[-cov_cnt:]
         topk_indices = indices[np.argsort(array[indices])[::-1]]
+
         if train_dataset['variation'][int(topk_indices[0])] == validation_dataset['variation'][i]:
             acc += 1
 
@@ -177,4 +186,76 @@ def check_acc_cov(influence, train_dataset, validation_dataset):
             if train_dataset['variation'][int(ele)] == validation_dataset['variation'][i]:
                 cov += 1
 
-    print("Acc:", acc / len(influence), '\nCover:', cov / (len(influence) * cov_cnt))
+        #dictionary for this validation sample
+        sample_scores = {int(ele): float(array[int(ele)]) for ele in topk_indices}
+        sorted_sample_scores = dict(sorted(sample_scores.items(), key=lambda x: x[1], reverse=True))
+        val_to_train_scores[int(i)] = sorted_sample_scores
+
+    acc_rate = acc / len(influence)
+    cov_rate = cov / (len(influence) * cov_cnt)
+    print("Acc:", acc_rate, '\nCover:', cov_rate)
+
+    # Plotting
+    plot_dir = "plots"
+    os.makedirs(plot_dir, exist_ok=True)
+    plt.figure(figsize=(6,4))
+    plt.bar(['Accuracy', 'Coverage'], [acc_rate, cov_rate], color=["#DFB5ED", "#AF9CEE"])
+    plt.ylim(0, 1)
+    plt.ylabel('Rate')
+    plt.title(f'{dataset_name} | {model} | {influence_est}')
+    
+    # Saving
+    filename = f"{dataset_name}_{model}_{influence_est}_acc_cov.png".replace(" ", "_")
+    plt.savefig(plot_dir + '/' + filename, bbox_inches='tight')
+    plt.show()
+
+    #Dictionary saving
+    dict_filename = f"{dataset_name}_{model}_{influence_est}_val_train_scores.json".replace(" ", "_")
+    with open(plot_dir + '/' + dict_filename, 'w') as f:
+        json.dump(val_to_train_scores, f, indent=2)
+
+
+
+def random_method(tr_grad_dict, val_grad_dict, distribution = "normal"):
+    n_train = len(tr_grad_dict.keys())
+    n_val = len(val_grad_dict.keys())
+
+    if distribution == "normal":
+        random_matrix = torch.randn(n_val, n_train)  # standard normal
+    elif distribution == "uniform":
+        random_matrix = torch.rand(n_val, n_train)  # uniform in [0,1)
+    else:
+        raise ValueError("distribution must be 'normal' or 'uniform'")
+
+    IF_df = pd.DataFrame(
+        random_matrix.numpy(),
+        index=list(val_grad_dict.keys()),
+        columns=list(tr_grad_dict.keys()),
+        dtype=float
+    )
+
+    return IF_df
+
+
+
+def influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', needed_args=None):
+    if needed_args is None:
+        needed_args = {}
+
+    print(f"Calculating influence with {hvp_cal}.")
+    print(f"All params: {needed_args}")
+
+
+    if hvp_cal == "random":
+        
+        influence_df = random_method(tr_grad_dict, val_grad_dict, **needed_args)
+    else:
+        # gradient influence function
+        influence_df = gradient_influence_methods(
+            tr_grad_dict,
+            val_grad_dict,
+            hvp_cal=hvp_cal,
+            **needed_args
+        )
+
+    return influence_df
