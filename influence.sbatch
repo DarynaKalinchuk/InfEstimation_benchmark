@@ -18,12 +18,13 @@ echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="random"
+HVP_METHOD="cosine_sim"
 INF_ARGS="distribution=uniform"
 INF_ARGS="lambda_const_param=10,n_iteration=10,alpha_const=1."
 
 while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
+    echo "HVP_METHOD = $HVP_METHOD"
 
     python3 influence.py \
         --model "$MODEL_NAME" \

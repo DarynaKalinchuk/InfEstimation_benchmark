@@ -85,7 +85,8 @@ def collect_gradient(model_name, lora_adapter_path, tokenizer, tokenized_tr, tok
             
     return tr_grad_dict, val_grad_dict
 
-def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', lambda_const_param = 10, n_iteration = 10, alpha_const = 1.):
+
+def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', lambda_const_param = "10", n_iteration = "10", alpha_const = "1."):
     
     lambda_const_param = int(lambda_const_param)
     n_iteration = int(n_iteration)
@@ -151,18 +152,31 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_ma
 
                 hvp_dict[val_id][weight_name] = running_hvp
 
-    elif hvp_cal == 'gradient_match':
+    elif hvp_cal == 'dot' or hvp_cal == "cosine_sim":
         hvp_dict = val_grad_dict.copy()
     else:
-        raise Exception("hvp calculation options: [Original, DataInf, LiSSA, gradient_match]")
+        raise Exception("Invalid hvp calculation option.")
 
     for tr_id in tr_grad_dict:
         for val_id in val_grad_dict:
             if_tmp_value = 0
+            norm_tr = 0
+            norm_val_hvp = 0
             for weight_name in val_grad_dict[0]:
-                if_tmp_value += torch.sum(hvp_dict[val_id][weight_name] * tr_grad_dict[tr_id][weight_name])
 
-            IF_dict[tr_id][val_id] = -if_tmp_value
+                g_val_hvp = hvp_dict[val_id][weight_name]
+                g_tr = tr_grad_dict[tr_id][weight_name]
+                if_tmp_value += torch.sum(g_val_hvp * g_tr)
+
+                # for normalization
+                norm_val_hvp += torch.sum(g_val_hvp * g_val_hvp)
+                norm_tr += torch.sum(g_tr * g_tr)
+
+            if hvp_cal == "cosine_sim":
+                cos_sim = if_tmp_value / (torch.sqrt(norm_tr) * torch.sqrt(norm_val_hvp) + 1e-12)
+                IF_dict[tr_id][val_id] = -cos_sim
+            else:
+                IF_dict[tr_id][val_id] = -if_tmp_value
 
     print("End of influence estimation.")
     return pd.DataFrame(IF_dict, dtype=float)
