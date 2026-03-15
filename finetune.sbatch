@@ -36,8 +36,7 @@ echo "TARGET_LAYER = $TARGET_LAYER"
 echo "LOAD_8BIT = $LOAD_8BIT"
 
 
-for DATASET_NAME in backdoor emotion grammars; do
-
+while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
 
     python3 finetune.py \
@@ -53,4 +52,5 @@ for DATASET_NAME in backdoor emotion grammars; do
         --lora_r $LORA_R \
         --lora_alpha $LORA_ALPHA \
         --target_layer "$TARGET_LAYER"
-done
+        
+done < dataset_settings.txt

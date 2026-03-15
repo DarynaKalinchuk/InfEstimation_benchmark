@@ -20,15 +20,15 @@ echo "EPOCHS = $EPOCHS"
 
 HVP_METHOD="DataInf"
 
-for DATASET_NAME in backdoor emotion grammars; do
-
+while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
 
     python3 influence.py \
         --model "$MODEL_NAME" \
         --dataset "$DATASET_NAME" \
         --epochs "$EPOCHS" \
-        --hvp_cal $HVP_METHOD \
+        --hvp_cal "$HVP_METHOD" \
         --template "$TEMPLATE" \
         --max_length "$MAX_LENGTH"
-done
+
+done < dataset_settings.txt
