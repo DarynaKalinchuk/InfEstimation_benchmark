@@ -1,6 +1,6 @@
 from datasets import load_from_disk
 from transformers import AutoTokenizer
-from utils import get_preprocessed_dataset, collect_gradient, influence_estimation, check_acc_cov
+from utils import *
 import pickle
 import argparse
 import os
@@ -32,39 +32,110 @@ if __name__ == '__main__':
     tokenizer.pad_token = tokenizer.eos_token
 
     dataset = load_from_disk("datasets/" + args.dataset)
-    if args.template == 'llama2':
-        chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
-    else: raise Exception("template options: [llama2]")
 
-    os.makedirs('grad/' + args.model , exist_ok=True)
-    core_path =  args.model + '/' + args.dataset + '_' + str(args.epochs)
 
-    tr_grad_file = 'grad/' + core_path + '_tr.pkl'
-    val_grad_file = 'grad/' + core_path + '_val.pkl'
+    if args.hvp_cal == 'repsim':
 
-    if os.path.exists(tr_grad_file) and os.path.exists(val_grad_file):
-        with open(tr_grad_file, 'rb') as f:
-            tr_grad_dict = pickle.load(f)
-        with open(val_grad_file, 'rb') as f:
-            val_grad_dict = pickle.load(f)
+        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
+        model = PeftModel.from_pretrained(
+            model,
+            "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+        )
+        model.eval()
+
+        if args.template == 'llama2':
+            chat_template = f"[INST] {{prompt}} [/INST]"
+        else: raise Exception("template options: [llama2]")
+
+        print('Generate hidden states...')
+
+        check = []
+        for p in tqdm(dataset['test']['prompts']):
+            inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
+            with torch.no_grad():
+                outputs = model(**inputs, output_hidden_states=True)
+
+            check.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy().T)
+
+        query = []
+        for p in tqdm(dataset['train']['prompts']):
+            inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
+            with torch.no_grad():
+                outputs = model(**inputs, output_hidden_states=True)
+                query.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy())
+
+
+        influence_inf = repsim(check, query, test_keys= range(len(check)), 
+                                train_keys=range(len(query)))
+
     else:
-        print('collecting grad...')
-        tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
-        tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=args.max_length)
-        tr_grad_dict, val_grad_dict = collect_gradient(model_name, "lora_adapter/" + core_path, tokenizer, tokenized_tr, tokenized_val)
-        with open(tr_grad_file, 'wb') as f:
-            pickle.dump(tr_grad_dict, f)
-        with open(val_grad_file, 'wb') as f:
-            pickle.dump(val_grad_dict, f)
+        if args.template == 'llama2':
+            chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
+        else: raise Exception("template options: [llama2]")
 
-    inf_args_map = dict(
-    item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
-    )
+        os.makedirs('grad/' + args.model , exist_ok=True)
+        core_path =  args.model + '/' + args.dataset + '_' + str(args.epochs)
 
-    influence_inf = influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
+        tr_grad_file = 'grad/' + core_path + '_tr.pkl'
+        val_grad_file = 'grad/' + core_path + '_val.pkl'
+
+        if os.path.exists(tr_grad_file) and os.path.exists(val_grad_file):
+            with open(tr_grad_file, 'rb') as f:
+                tr_grad_dict = pickle.load(f)
+            with open(val_grad_file, 'rb') as f:
+                val_grad_dict = pickle.load(f)
+        else:
+            print('collecting grad...')
+            tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
+            tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=args.max_length)
+            tr_grad_dict, val_grad_dict = collect_gradient(model_name, "lora_adapter/" + core_path, tokenizer, tokenized_tr, tokenized_val)
+            with open(tr_grad_file, 'wb') as f:
+                pickle.dump(tr_grad_dict, f)
+            with open(val_grad_file, 'wb') as f:
+                pickle.dump(val_grad_dict, f)
+
+        inf_args_map = dict(
+        item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
+        )
+
+        influence_inf = influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
 
     cache_dir = 'cache/' + args.model + '/'
     os.makedirs(cache_dir, exist_ok=True)
     influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
     check_acc_cov(influence_inf, dataset['train'], dataset['test'], 
-                  dataset_name = args.dataset, model = args.model, influence_est = args.hvp_cal)
+                dataset_name = args.dataset, model = args.model, influence_est = args.hvp_cal)
+
+
+
+# model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
+#         model = PeftModel.from_pretrained(
+#             model,
+#             "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+#         )
+#         model.eval()
+
+#         if args.template == 'llama2':
+#             chat_template = f"[INST] {{prompt}} [/INST]"
+#         else: raise Exception("template options: [llama2]")
+
+#         print('Generate hidden states...')
+
+#         check = []
+#         for p in tqdm(dataset['test']['prompts']):
+#             inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
+#             with torch.no_grad():
+#                 outputs = model(**inputs, output_hidden_states=True)
+
+#             check.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy().T)
+
+#         query = []
+#         for p in tqdm(dataset['train']['prompts']):
+#             inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
+#             with torch.no_grad():
+#                 outputs = model(**inputs, output_hidden_states=True)
+#                 query.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy())
+
+#         for idx, item in enumerate(check):
+#             arr = repsim(item, query)
+#             print(arr)

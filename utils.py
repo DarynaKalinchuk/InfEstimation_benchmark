@@ -273,3 +273,30 @@ def influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', 
         )
 
     return influence_df
+
+
+
+def repsim(test_vecs, train_vecs, test_keys=None, train_keys=None):
+    print("evaluating repsim..")
+    cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    sim_matrix = []
+    for test_vec in test_vecs:
+        sim_matrix.append([cos_sim(test_vec, train_vec) for train_vec in train_vecs])
+    
+    df = pd.DataFrame(
+        sim_matrix,
+        index=test_keys,
+        columns=train_keys,
+        dtype=float
+    )
+    return df
+
+
+
+# def repsim(test_vec, train_vecs):
+#     cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+#     sim = []
+#     for i in range(len(train_vecs)):
+#         sim.append(cos_sim(test_vec, train_vecs[i]))
+#     return np.array(sim)
+
