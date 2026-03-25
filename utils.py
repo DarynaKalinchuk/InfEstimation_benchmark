@@ -230,21 +230,22 @@ def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='',
 
 
 
-def random_method(tr_grad_dict, val_grad_dict, distribution = "normal"):
-    n_train = len(tr_grad_dict.keys())
-    n_val = len(val_grad_dict.keys())
+def random_method(train_dataset, eval_dataset, distribution="normal"):
+    
+    n_train = len(train_dataset)
+    n_eval = len(eval_dataset)
 
     if distribution == "normal":
-        random_matrix = torch.randn(n_val, n_train)  # standard normal
+        random_matrix = torch.randn(n_eval, n_train)
     elif distribution == "uniform":
-        random_matrix = torch.rand(n_val, n_train)  # uniform in [0,1)
+        random_matrix = torch.rand(n_eval, n_train)
     else:
         raise ValueError("distribution must be 'normal' or 'uniform'")
 
     IF_df = pd.DataFrame(
         random_matrix.numpy(),
-        index=list(val_grad_dict.keys()),
-        columns=list(tr_grad_dict.keys()),
+        index=range(n_eval),
+        columns=range(n_train),
         dtype=float
     )
 
@@ -252,51 +253,30 @@ def random_method(tr_grad_dict, val_grad_dict, distribution = "normal"):
 
 
 
-def influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', needed_args=None):
+def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', needed_args=None):
     if needed_args is None:
         needed_args = {}
 
     print(f"Calculating influence with {hvp_cal}.")
     print(f"All params: {needed_args}")
 
-
-    if hvp_cal == "random":
-        
-        influence_df = random_method(tr_grad_dict, val_grad_dict, **needed_args)
-    else:
-        # gradient influence function
-        influence_df = gradient_influence_methods(
-            tr_grad_dict,
-            val_grad_dict,
-            hvp_cal=hvp_cal,
-            **needed_args
-        )
+    
+    # gradient influence function
+    influence_df = gradient_influence_methods(
+        tr_grad_dict,
+        val_grad_dict,
+        hvp_cal=hvp_cal,
+        **needed_args
+    )
 
     return influence_df
 
 
 
-def repsim(test_vecs, train_vecs, test_keys=None, train_keys=None):
-    print("evaluating repsim..")
+def repsim(test_vec, train_vecs):
     cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-    sim_matrix = []
-    for test_vec in test_vecs:
-        sim_matrix.append([cos_sim(test_vec, train_vec) for train_vec in train_vecs])
-    
-    df = pd.DataFrame(
-        sim_matrix,
-        index=test_keys,
-        columns=train_keys,
-        dtype=float
-    )
-    return df
-
-
-
-# def repsim(test_vec, train_vecs):
-#     cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-#     sim = []
-#     for i in range(len(train_vecs)):
-#         sim.append(cos_sim(test_vec, train_vecs[i]))
-#     return np.array(sim)
+    sim = []
+    for i in range(len(train_vecs)):
+        sim.append(cos_sim(test_vec, train_vecs[i]))
+    return np.array(sim)
 

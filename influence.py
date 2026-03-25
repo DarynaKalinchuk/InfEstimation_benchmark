@@ -33,8 +33,11 @@ if __name__ == '__main__':
 
     dataset = load_from_disk("datasets/" + args.dataset)
 
+    if args.hvp_cal == "random":
+        
+        influence_inf = random_method(dataset['train'], dataset['test'], distribution="normal") #!!make flexible
 
-    if args.hvp_cal == 'repsim':
+    elif args.hvp_cal == 'repsim':
 
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
         model = PeftModel.from_pretrained(
@@ -65,8 +68,14 @@ if __name__ == '__main__':
                 query.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy())
 
 
-        influence_inf = repsim(check, query, test_keys= range(len(check)), 
-                                train_keys=range(len(query)))
+        sim_matrix = []
+        for item in tqdm(check):
+            arr = repsim(item, query)   # shape: [num_train]
+            sim_matrix.append(arr)
+
+        sim_df = pd.DataFrame(sim_matrix)
+
+        influence_inf = -sim_df  #negation because the larger the similarity, the better; unlike influence.
 
     else:
         if args.template == 'llama2':
@@ -98,44 +107,13 @@ if __name__ == '__main__':
         item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
         )
 
-        influence_inf = influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
+        influence_inf = gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
 
     cache_dir = 'cache/' + args.model + '/'
     os.makedirs(cache_dir, exist_ok=True)
     influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
-    check_acc_cov(influence_inf, dataset['train'], dataset['test'], 
+    check_acc_cov(influence = influence_inf, train_dataset = dataset['train'], 
+                  validation_dataset = dataset['test'], 
                 dataset_name = args.dataset, model = args.model, influence_est = args.hvp_cal)
 
 
-
-# model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
-#         model = PeftModel.from_pretrained(
-#             model,
-#             "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
-#         )
-#         model.eval()
-
-#         if args.template == 'llama2':
-#             chat_template = f"[INST] {{prompt}} [/INST]"
-#         else: raise Exception("template options: [llama2]")
-
-#         print('Generate hidden states...')
-
-#         check = []
-#         for p in tqdm(dataset['test']['prompts']):
-#             inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
-#             with torch.no_grad():
-#                 outputs = model(**inputs, output_hidden_states=True)
-
-#             check.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy().T)
-
-#         query = []
-#         for p in tqdm(dataset['train']['prompts']):
-#             inputs = tokenizer(chat_template.format(prompt=p), padding=True, return_tensors="pt").to('cuda')
-#             with torch.no_grad():
-#                 outputs = model(**inputs, output_hidden_states=True)
-#                 query.append(outputs['hidden_states'][-1][:, -1, :].view(-1).cpu().numpy())
-
-#         for idx, item in enumerate(check):
-#             arr = repsim(item, query)
-#             print(arr)
