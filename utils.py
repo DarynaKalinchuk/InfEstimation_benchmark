@@ -340,10 +340,17 @@ def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient
 
 
 
-def repsim(test_vec, train_vecs):
-    cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+def similarity_influence_estimation(test_vec, train_vecs, hvp_cal = "rep_cos_sim"):
+    rep_cos_sim = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    rep_dot_sim = lambda a, b: np.dot(a, b)
+    rep_euc_sim = lambda a, b: -np.linalg.norm(a - b)**2
+
+    sim_fn = locals().get(hvp_cal)
+    if sim_fn is None:
+        raise ValueError(f"Unknown similarity type: {hvp_cal}")
+    
     sim = []
     for i in range(len(train_vecs)):
-        sim.append(cos_sim(test_vec, train_vecs[i]))
+        sim.append(sim_fn(test_vec, train_vecs[i]))
     return np.array(sim)
 

@@ -37,7 +37,7 @@ if __name__ == '__main__':
         
         influence_inf = random_method(dataset['train'], dataset['test'], distribution="normal") #!!make flexible
 
-    elif args.hvp_cal == 'repsim':
+    elif "rep" in args.hvp_cal and "sim" in args.hvp_cal:
 
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
         model = PeftModel.from_pretrained(
@@ -70,7 +70,7 @@ if __name__ == '__main__':
 
         sim_matrix = []
         for item in tqdm(check):
-            arr = repsim(item, query)   # shape: [num_train]
+            arr = similarity_influence_estimation(test_vec=item, train_vecs=query,hvp_cal=args.hvp_cal)   # shape: [num_train]
             sim_matrix.append(arr)
 
         sim_df = pd.DataFrame(sim_matrix)

@@ -18,7 +18,7 @@ echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="repsim"
+HVP_METHOD="rep_dot_sim"
 INF_ARGS="distribution=uniform"
 INF_ARGS="lambda_const_param=10,n_iteration=10,alpha_const=1."
 
