@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import matplotlib.pyplot as plt
 import os
 import json
+import math
 
 def get_preprocessed_dataset(tokenizer, dataset, chat_template, max_length):
     def apply_prompt_template(sample):
@@ -209,24 +210,90 @@ def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='',
     cov_rate = cov / (len(influence) * cov_cnt)
     print("Acc:", acc_rate, '\nCover:', cov_rate)
 
-    # Plotting
-    plot_dir = "plots"
-    os.makedirs(plot_dir, exist_ok=True)
-    plt.figure(figsize=(6,4))
-    plt.bar(['Accuracy', 'Coverage'], [acc_rate, cov_rate], color=["#DFB5ED", "#AF9CEE"])
-    plt.ylim(0, 1)
-    plt.ylabel('Rate')
-    plt.title(f'{dataset_name} | {model} | {influence_est}')
-    
-    # Saving
-    filename = f"{dataset_name}_{model}_{influence_est}_acc_cov.png".replace(" ", "_")
-    plt.savefig(plot_dir + '/' + filename, bbox_inches='tight')
-    plt.show()
+    # Create directories
+    results_dir = "results"
+    detailed_results_dir = os.path.join(results_dir, "detailed_results")
+    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(detailed_results_dir, exist_ok=True)
 
-    #Dictionary saving
+    # Save accuracy and coverage only
+    metrics_filename = f"{dataset_name}_{model}_{influence_est}_acc_cov.json".replace(" ", "_")
+    metrics_path = os.path.join(results_dir, metrics_filename)
+
+    metrics = {
+        "accuracy": acc_rate,
+        "coverage": cov_rate
+    }
+
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics, f, indent=2)
+
+    # Save detailed dictionary
     dict_filename = f"{dataset_name}_{model}_{influence_est}_val_train_scores.json".replace(" ", "_")
-    with open(plot_dir + '/' + dict_filename, 'w') as f:
+    dict_path = os.path.join(detailed_results_dir, dict_filename)
+
+    with open(dict_path, 'w') as f:
         json.dump(val_to_train_scores, f, indent=2)
+
+
+
+def plot_all_acc_cov(results_dir="results", figsize_per_plot=(4, 4)):
+    
+    if not os.path.exists(results_dir):
+        raise FileNotFoundError(f"Directory not found: {results_dir}")
+
+    files = [
+        f for f in os.listdir(results_dir)
+        if f.endswith("_acc_cov.json") and os.path.isfile(os.path.join(results_dir, f))
+    ]
+
+    if not files:
+        raise ValueError(f"No *_acc_cov.json files found in {results_dir}")
+
+    files = sorted(files)
+    n = len(files)
+
+    cols = math.ceil(math.sqrt(n)) 
+    rows = math.ceil(n / cols)
+
+    fig, axes = plt.subplots(
+        rows,
+        cols,
+        figsize=(figsize_per_plot[0] * cols, figsize_per_plot[1] * rows)
+    )
+
+    if rows == 1 and cols == 1:
+        axes = [axes]
+    elif rows == 1 or cols == 1:
+        axes = list(axes)
+    else:
+        axes = axes.flatten()
+
+    for ax, filename in zip(axes, files):
+        filepath = os.path.join(results_dir, filename)
+
+        with open(filepath, "r") as f:
+            metrics = json.load(f)
+
+        acc = metrics.get("accuracy", 0.0)
+        cov = metrics.get("coverage", 0.0)
+
+        ax.bar(["Accuracy", "Coverage"], [acc, cov])
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Rate")
+
+        title = filename.replace("_acc_cov.json", "").replace("_", " ")
+        ax.set_title(title, fontsize=10)
+
+    # Hide unused subplots
+    for ax in axes[n:]:
+        ax.axis("off")
+
+    plt.tight_layout()
+
+
+    plt.savefig(results_dir + "/acc_cov_plots.png", bbox_inches="tight")
+
 
 
 

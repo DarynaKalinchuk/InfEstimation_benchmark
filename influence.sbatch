@@ -36,3 +36,6 @@ while read -r DATASET_NAME; do
         --max_length "$MAX_LENGTH"
 
 done < dataset_settings.txt
+
+
+python3 -c "from utils import plot_all_acc_cov; plot_all_acc_cov()"
