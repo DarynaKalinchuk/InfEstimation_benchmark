@@ -87,7 +87,7 @@ def collect_gradient(model_name, lora_adapter_path, tokenizer, tokenized_tr, tok
     return tr_grad_dict, val_grad_dict
 
 
-def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', lambda_const_param = "10", n_iteration = "10", alpha_const = "1."):
+def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', lambda_const_param = "10", n_iteration = "10", alpha_const = "1."):
     
     lambda_const_param = int(lambda_const_param)
     n_iteration = int(n_iteration)
@@ -153,7 +153,7 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_ma
 
                 hvp_dict[val_id][weight_name] = running_hvp
 
-    elif hvp_cal == 'dot' or hvp_cal == "cosine_sim":
+    elif hvp_cal == 'GradDot' or hvp_cal == "GradCos":
         hvp_dict = val_grad_dict.copy()
     else:
         raise Exception("Invalid hvp calculation option.")
@@ -173,7 +173,7 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='gradient_ma
                 norm_val_hvp += torch.sum(g_val_hvp * g_val_hvp)
                 norm_tr += torch.sum(g_tr * g_tr)
 
-            if hvp_cal == "cosine_sim":
+            if hvp_cal == "GradCos":
                 cos_sim = if_tmp_value / (torch.sqrt(norm_tr) * torch.sqrt(norm_val_hvp) + 1e-12)
                 IF_dict[tr_id][val_id] = -cos_sim
             else:
@@ -320,7 +320,7 @@ def random_method(train_dataset, eval_dataset, distribution="normal"):
 
 
 
-def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='gradient_match', needed_args=None):
+def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', needed_args=None):
     if needed_args is None:
         needed_args = {}
 

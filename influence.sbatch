@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=0-1:00:00 
 #SBATCH --container-workdir=/srv/home/users/kalinchukd23cs/InfEstimation_benchmark
-#SBATCH --nodelist=dgx1
+
 
 python3 --version
 
@@ -18,7 +18,7 @@ echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="rep_dot_sim"
+HVP_METHOD="rep_euc_sim"
 INF_ARGS="distribution=uniform"
 INF_ARGS="lambda_const_param=10,n_iteration=10,alpha_const=1."
 
