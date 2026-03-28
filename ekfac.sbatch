@@ -12,4 +12,4 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 
 python3 --version
 
-python3 ekfac2.py
+python3 ekfac.py

@@ -12,7 +12,7 @@ import string
 import tqdm
 import numpy as np
 import transformers as trf
-
+from hooks_Llama import *
 
 class CovarianceEstimator():
     '''
@@ -276,18 +276,6 @@ def compute_pseudo_loss(masks, logits):
     probs = torch.softmax(logits, -1).reshape(bs * ts, -1)
     probs = probs[torch.arange(bs * ts), ids.flatten()].reshape(bs, ts)
     return -(masks * torch.log2(probs)).sum(axis=1)
-
-
-def get_sample_indices(num_samples, num_neg, i):
-    indices = list(range(num_samples))
-    indices.remove(i)
-    neg_indices = random.sample(indices, num_neg)
-    return [i] + neg_indices
-
-
-def sentence_tokenize(s):
-    return re.split(r'(?<=[^A-Z].[.!?]) +(?=[A-Z])', s)
-
 
 
 
@@ -578,3 +566,57 @@ def batchit(X, bs=1, droplast=False):
             batch.clear()
     if not droplast and len(batch) > 0:
         yield batch
+
+
+
+def ekfac_calculate_SVD_Lambda(corpus, hooker, generator, save_path, batch_size_cov, batch_size_lambda):
+
+    estimator = CovarianceEstimator()
+    bar_cov = tqdm.tqdm(total=len(corpus), desc="EstimatingCovariance")
+    device = generator._model.device
+
+    ### Estimating S and A
+    for i, texts in enumerate(batchit(corpus, batch_size_cov)):
+        texts = [_ for _ in texts if len(_.strip()) > 0]
+        if len(texts) == 0:
+            continue
+        zero_grad(generator._model)
+        inputs, outputs = generator.forward(texts)
+        losses = compute_pseudo_loss(inputs["attention_mask"],
+                                   outputs.logits)
+        for loss in losses:
+            loss.backward(retain_graph=True)
+        with torch.no_grad():
+            estimator.update_cov(hooker.collect_states(),
+                                 inputs["attention_mask"].to(generator._device))
+        bar_cov.update(len(texts))
+
+        if i>=500:
+            break
+    
+    ### Calculating the SVD decomposition of S and A
+    estimator.calculate_eigenvalues_and_vectors()
+
+    ### Estimating Lambda
+    batch_size = batch_size_lambda 
+    bar_lambda = tqdm.tqdm(total=len(corpus), desc="EstimatingLambda")
+    for i, texts in enumerate(batchit(corpus, batch_size)):
+        texts = [_ for _ in texts if len(_.strip()) > 0]
+        if len(texts) == 0:
+            continue
+        zero_grad(generator._model)
+        inputs, outputs = generator.forward(texts)
+        losses = compute_pseudo_loss(inputs["attention_mask"], outputs.logits)
+        for loss in losses:
+            loss.backward(retain_graph=True)
+        with torch.no_grad():
+            estimator.update_lambdas(hooker.collect_states(),
+                                     inputs["attention_mask"].to(generator._device))
+        bar_lambda.update(len(texts))
+        
+        if i>=500:
+            break
+
+    os.makedirs(save_path, exist_ok=True)
+    estimator.save_to_disk(save_path)
+
