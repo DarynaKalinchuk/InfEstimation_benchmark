@@ -44,13 +44,13 @@ if __name__ == "__main__":
 
     train_corpus = list(dataset["train"])
     train_texts = [
-    sample["prompts"].strip() + " " + sample["response"].strip()
-    for sample in train_corpus
+        f"[INST] {sample['prompts'].strip()} [/INST] {sample['response'].strip()}"
+        for sample in train_corpus
     ]
 
     test_corpus = list(dataset["test"])
 
-    generator = Generator(model_name, device="cuda")
+    generator = Generator("/srv/home/users/kalinchukd23cs/InfEstimation_benchmark/finetuned_model/TinyLlama/backdoor_1", device="cuda")
 
 
     hooker = MLPHookController.LLaMA(generator._model)
@@ -62,11 +62,11 @@ if __name__ == "__main__":
         inf_estimator = InfluenceEstimator.load_from_disk(inf_root)
     except Exception:
         ekfac_calculate_SVD_Lambda(corpus = train_texts, 
-                                                   hooker = hooker,
-                                                   generator = generator, 
-                                                   save_path = inf_root,
-                                                   batch_size_cov=2,
-                                                   batch_size_lambda=1)
+                                    hooker = hooker,
+                                    generator = generator, 
+                                    save_path = inf_root,
+                                    batch_size_cov=2,
+                                    batch_size_lambda=1)
         
         inf_estimator = InfluenceEstimator.load_from_disk(inf_root)
     
@@ -80,17 +80,33 @@ if __name__ == "__main__":
     # Loop over all the queries
     for i, sample in enumerate(test_corpus):
 
-        query = sample["prompts"].strip()
-        generated = generator.generate([query])[0]
-
-        query, completion, _ = generator.prepare4explain([query], [generated])
-        #cutoff at 1024
-        completion = [completion[0][:1024 - len(query[0])]]
         
-        # Forward propagation
-        ids = torch.tensor([generator._tokenizer.convert_tokens_to_ids(query[0] + completion[0])])
-        probs = torch.softmax(generator._model(input_ids=ids.to(generator._model.device)).logits, dim=-1)
-        out_mask = torch.tensor([[0] * len(query[0]) + [1] * len(completion[0])]).to(generator._model.device)
+        prompt_text = f"[INST] {sample['prompts'].strip()} [/INST]"
+        response_text = sample["response"].strip()
+        
+        # tokenizing with truncation
+        max_len = 1024
+        prompt_ids = generator._tokenizer.encode(prompt_text, add_special_tokens=False,
+                                                truncation=True,
+                                                max_length=max_len,)
+
+
+        remaining = max_len - len(prompt_ids)
+
+        response_ids = generator._tokenizer.encode(response_text, add_special_tokens=False,
+                                                    truncation=True,
+                                                    max_length=max(remaining, 0),
+                                                )
+        full_ids = prompt_ids + response_ids
+        ids = torch.tensor([full_ids], device=generator._model.device)
+
+        out_mask = torch.tensor(
+            [[0] * len(prompt_ids) + [1] * len(response_ids)],
+            device=generator._model.device
+        )
+
+        probs = torch.softmax(generator._model(input_ids=ids).logits, dim=-1)
+
         
         # Calculte the log probability
         query_loss = compute_LM_loss(ids, out_mask, probs)[0]
@@ -98,7 +114,7 @@ if __name__ == "__main__":
         
         # Backward propagation
         with torch.no_grad():
-            ### Remove all the weightsn
+            ### Remove all the weights
             query_grads = hooker.collect_weight_grads()
             # use .copy, otherwise zero_grad will remove the grad
             query_grads = {layer:grad.clone() for layer, (_, grad) in query_grads.items()}
@@ -107,7 +123,7 @@ if __name__ == "__main__":
         # Calculate the HVP for the query
         query_hvps = inf_estimator.calculate_hvp(query_grads)
         
-        bar = tqdm.tqdm(total=num_train, desc=f"Influence for Test Sample {i}")
+        bar = tqdm.tqdm(total=num_train, desc=f"Influence for Test Sample {i} out of {num_test}")
         
         for j in range(num_train):
             # Forward propagation

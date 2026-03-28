@@ -18,24 +18,31 @@ echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="rep_euc_sim"
+HVP_METHOD="ekfac"
 INF_ARGS="distribution=uniform"
 INF_ARGS="lambda_const_param=10,n_iteration=10,alpha_const=1."
 
-while read -r DATASET_NAME; do
-    echo "DATASET_NAME = $DATASET_NAME"
-    echo "HVP_METHOD = $HVP_METHOD"
+while read -r HVP_METHOD; do
+    [ -z "$HVP_METHOD" ] && continue
 
-    python3 influence.py \
-        --model "$MODEL_NAME" \
-        --dataset "$DATASET_NAME" \
-        --epochs "$EPOCHS" \
-        --hvp_cal "$HVP_METHOD" \
-        --template "$TEMPLATE" \
-        --inf_args "$INF_ARGS" \
-        --max_length "$MAX_LENGTH"
+    while read -r DATASET_NAME; do
+        [ -z "$DATASET_NAME" ] && continue
 
-done < dataset_settings.txt
+        echo "DATASET_NAME = $DATASET_NAME"
+        echo "HVP_METHOD = $HVP_METHOD"
+
+        python3 influence.py \
+            --model "$MODEL_NAME" \
+            --dataset "$DATASET_NAME" \
+            --epochs "$EPOCHS" \
+            --hvp_cal "$HVP_METHOD" \
+            --template "$TEMPLATE" \
+            --inf_args "$INF_ARGS" \
+            --max_length "$MAX_LENGTH"
+
+    done < dataset_settings.txt
+
+done < hvp_settings.txt
 
 
 python3 -c "from utils import plot_all_acc_cov; plot_all_acc_cov()"

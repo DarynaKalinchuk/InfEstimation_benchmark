@@ -33,7 +33,14 @@ if __name__ == '__main__':
 
     dataset = load_from_disk("datasets/" + args.dataset)
 
-    if args.hvp_cal == "random":
+    if args.hvp_cal == "ekfac":
+
+        influence_inf = pd.DataFrame(
+        torch.load(f"results/EKFAC/{args.dataset}/{model_name}/influence_matrix.pt").numpy(),
+        dtype=float
+    )
+
+    elif args.hvp_cal == "random":
         
         influence_inf = random_method(dataset['train'], dataset['test'], distribution="normal") #!!make flexible
 

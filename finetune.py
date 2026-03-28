@@ -27,9 +27,9 @@ if __name__ == '__main__':
     
     # if 'Llama' in args.model:
     #     model_name = "/common/public/LLAMA2-HF/" + args.model
-    if args.model == 'mistral':
-        model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
-    elif args.model == 'TinyLlama':
+    # if args.model == 'mistral':
+    #     model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
+    if args.model == 'TinyLlama':
         model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     else: raise Exception("Invalid model name.")
 
