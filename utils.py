@@ -297,29 +297,6 @@ def plot_all_acc_cov(results_dir="results", figsize_per_plot=(4, 4)):
 
 
 
-def random_method(train_dataset, eval_dataset, distribution="normal"):
-    
-    n_train = len(train_dataset)
-    n_eval = len(eval_dataset)
-
-    if distribution == "normal":
-        random_matrix = torch.randn(n_eval, n_train)
-    elif distribution == "uniform":
-        random_matrix = torch.rand(n_eval, n_train)
-    else:
-        raise ValueError("distribution must be 'normal' or 'uniform'")
-
-    IF_df = pd.DataFrame(
-        random_matrix.numpy(),
-        index=range(n_eval),
-        columns=range(n_train),
-        dtype=float
-    )
-
-    return IF_df
-
-
-
 def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', needed_args=None):
     if needed_args is None:
         needed_args = {}

@@ -40,10 +40,6 @@ if __name__ == '__main__':
         dtype=float
     )
 
-    elif args.hvp_cal == "random":
-        
-        influence_inf = random_method(dataset['train'], dataset['test'], distribution="normal") #!!make flexible
-
     elif "rep" in args.hvp_cal and "sim" in args.hvp_cal:
 
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
