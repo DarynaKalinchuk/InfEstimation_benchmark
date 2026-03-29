@@ -182,29 +182,38 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', l
     print("End of influence estimation.")
     return pd.DataFrame(IF_dict, dtype=float)
 
+
+
 def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='', model='', influence_est=''):
     acc = 0
     cov = 0
+
+    #700/2 in backdoor case
     cov_cnt = int(len(train_dataset) / len(set(train_dataset['variation'])))
     
-    val_to_train_scores = {}
 
     for i in range(len(influence)):
+        #i-th row, so influence for i-th test sample across train, flip of sign
+        # => the more positive the more influential now
         array = -(influence.loc[i].to_numpy())
+
+        # take #cov_cnt largest values
         indices = np.argpartition(array, -cov_cnt)[-cov_cnt:]
+
+        # Indices of the top cov_cnt training samples,
+        # sorted by (-influence) from largest to smallest => first ones are more influential
         topk_indices = indices[np.argsort(array[indices])[::-1]]
 
+        # does the sample ranked as most influential have the same variation label as the test sample?
         if train_dataset['variation'][int(topk_indices[0])] == validation_dataset['variation'][i]:
             acc += 1
 
+        # how many of the #cov_cnt samples with largest influence values have the same variation 
+        # as this test sample? 
         for ele in topk_indices:
             if train_dataset['variation'][int(ele)] == validation_dataset['variation'][i]:
                 cov += 1
 
-        #dictionary for this validation sample
-        sample_scores = {int(ele): float(array[int(ele)]) for ele in topk_indices}
-        sorted_sample_scores = dict(sorted(sample_scores.items(), key=lambda x: x[1], reverse=True))
-        val_to_train_scores[int(i)] = sorted_sample_scores
 
     acc_rate = acc / len(influence)
     cov_rate = cov / (len(influence) * cov_cnt)
@@ -212,11 +221,9 @@ def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='',
 
     # Create directories
     results_dir = "results"
-    detailed_results_dir = os.path.join(results_dir, "detailed_results")
     os.makedirs(results_dir, exist_ok=True)
-    os.makedirs(detailed_results_dir, exist_ok=True)
 
-    # Save accuracy and coverage only
+    # Save accuracy and coverage 
     metrics_filename = f"{dataset_name}_{model}_{influence_est}_acc_cov.json".replace(" ", "_")
     metrics_path = os.path.join(results_dir, metrics_filename)
 
@@ -227,13 +234,6 @@ def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='',
 
     with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=2)
-
-    # Save detailed dictionary
-    dict_filename = f"{dataset_name}_{model}_{influence_est}_val_train_scores.json".replace(" ", "_")
-    dict_path = os.path.join(detailed_results_dir, dict_filename)
-
-    with open(dict_path, 'w') as f:
-        json.dump(val_to_train_scores, f, indent=2)
 
 
 
@@ -278,10 +278,10 @@ def plot_all_acc_cov(results_dir="results", figsize_per_plot=(4, 4)):
         acc = metrics.get("accuracy", 0.0)
         cov = metrics.get("coverage", 0.0)
 
-        ax.bar(["Accuracy", "Coverage"], [acc, cov])
+        bars = ax.bar(["Accuracy", "Coverage"], [acc, cov])
         ax.set_ylim(0, 1)
         ax.set_ylabel("Rate")
-
+        ax.bar_label(bars, fmt="%.4f", padding=3)
         title = filename.replace("_acc_cov.json", "").replace("_", " ")
         ax.set_title(title, fontsize=10)
 

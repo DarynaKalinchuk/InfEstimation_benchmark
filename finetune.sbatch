@@ -22,6 +22,8 @@ if [ "$LOAD_8BIT" == "True" ]; then
     LOAD8BIT_ARG="--load_in_8bit"
 fi
 
+TRAIN_MODE="lora"
+
 echo "MODEL_NAME = $MODEL_NAME"
 echo "TEMPLATE = $TEMPLATE"
 echo "VAL_FLAG = $VAL_FLAG"
@@ -33,7 +35,7 @@ echo "LORA_R = $LORA_R"
 echo "LORA_ALPHA = $LORA_ALPHA"
 echo "TARGET_LAYER = $TARGET_LAYER"
 echo "LOAD_8BIT = $LOAD_8BIT"
-
+echo "TRAIN_MODE = $TRAIN_MODE"
 
 while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
@@ -50,6 +52,7 @@ while read -r DATASET_NAME; do
         --epochs $EPOCHS \
         --lora_r $LORA_R \
         --lora_alpha $LORA_ALPHA \
-        --target_layer "$TARGET_LAYER"
+        --target_layer "$TARGET_LAYER" \
+        --train_mode $TRAIN_MODE
         
 done < dataset_settings.txt

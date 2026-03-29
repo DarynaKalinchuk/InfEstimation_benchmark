@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
 
     root = os.getcwd()
-    dataset_name = "backdoor_sample"
+    dataset_name = "backdoor"
     result_folder = os.path.join("results/EKFAC", dataset_name)
 
     dataset = load_from_disk("datasets/" + dataset_name)
