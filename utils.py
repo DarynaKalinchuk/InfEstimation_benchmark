@@ -184,7 +184,7 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', l
 
 
 
-def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='', model='', influence_est=''):
+def check_acc_cov(influence, train_dataset, validation_dataset, metrics_path):
     acc = 0
     cov = 0
 
@@ -218,14 +218,6 @@ def check_acc_cov(influence, train_dataset, validation_dataset, dataset_name='',
     acc_rate = acc / len(influence)
     cov_rate = cov / (len(influence) * cov_cnt)
     print("Acc:", acc_rate, '\nCover:', cov_rate)
-
-    # Create directories
-    results_dir = "results"
-    os.makedirs(results_dir, exist_ok=True)
-
-    # Save accuracy and coverage 
-    metrics_filename = f"{dataset_name}_{model}_{influence_est}_acc_cov.json".replace(" ", "_")
-    metrics_path = os.path.join(results_dir, metrics_filename)
 
     metrics = {
         "accuracy": acc_rate,

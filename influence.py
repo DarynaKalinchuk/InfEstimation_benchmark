@@ -4,6 +4,7 @@ from utils import *
 import pickle
 import argparse
 import os
+import sys
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Fine-tuning LLMs")
@@ -33,12 +34,45 @@ if __name__ == '__main__':
 
     dataset = load_from_disk("datasets/" + args.dataset)
 
+    # results statistics directory
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+    metrics_filename = f"{args.dataset}_{args.model}_{args.hvp_cal}_acc_cov.json".replace(" ", "_")
+    metrics_path = os.path.join(results_dir, metrics_filename)
+
+
     if args.hvp_cal == "ekfac":
 
         influence_inf = pd.DataFrame(
         torch.load(f"results/EKFAC/{args.dataset}/{model_name}/influence_matrix.pt").numpy(),
         dtype=float
     )
+
+    elif (args.hvp_cal == "random"):
+
+        train_var = dataset["train"]["variation"]
+        eval_var = dataset["test"]["variation"]
+        N = len(train_var)
+        #count of train samples per variation
+        counts = {}
+        for v in train_var:
+            counts[v] = counts.get(v, 0) + 1
+
+        # expected accuracy = expected coverage
+        values = [counts[v] / N for v in eval_var]
+        acc_rate = cov_rate = np.mean(values)
+
+        metrics = {
+        "accuracy": acc_rate,
+        "coverage": cov_rate
+        }
+
+        with open(metrics_path, 'w') as f:
+            json.dump(metrics, f, indent=2)
+
+        sys.exit()
+
+
 
     elif "rep" in args.hvp_cal and "sim" in args.hvp_cal:
 
@@ -117,6 +151,6 @@ if __name__ == '__main__':
     influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
     check_acc_cov(influence = influence_inf, train_dataset = dataset['train'], 
                   validation_dataset = dataset['test'], 
-                dataset_name = args.dataset, model = args.model, influence_est = args.hvp_cal)
+                  metrics_path = metrics_path)
 
 
