@@ -5,10 +5,9 @@
 #SBATCH --mem=128G 
 #SBATCH --cpus-per-task=24  
 #SBATCH --gres=gpu:2
-#SBATCH --time=0-8:00:00 
+#SBATCH --time=0-3:00:00 
 #SBATCH --container-workdir=/srv/home/users/kalinchukd23cs/InfEstimation_benchmark
 
-export PYTORCH_ALLOC_CONF=expandable_segments:True
 
 python3 --version
 

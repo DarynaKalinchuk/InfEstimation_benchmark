@@ -89,7 +89,7 @@ def collect_gradient(model_name, lora_adapter_path, tokenizer, tokenized_tr, tok
 
 def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', lambda_const_param = "10", n_iteration = "10", alpha_const = "1."):
     
-    lambda_const_param = int(lambda_const_param)
+    lambda_const_param = float(lambda_const_param)
     n_iteration = int(n_iteration)
     alpha_const = float(alpha_const)
 
@@ -147,12 +147,13 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', l
                     hvp_tmp = torch.zeros(val_grad_dict[val_id][weight_name].shape)
                     for tr_id in tr_grad_dict:
                         tmp_grad = tr_grad_dict[tr_id][weight_name]
-                        hvp_tmp += (torch.sum(tmp_grad * running_hvp) * tmp_grad - lambda_const * running_hvp) / n_train / 1e3
+                        hvp_tmp += (torch.sum(tmp_grad * running_hvp) * tmp_grad + lambda_const * running_hvp) / n_train / 1e3
                     
                     running_hvp = val_grad_dict[val_id][weight_name] + running_hvp - alpha_const * hvp_tmp
 
                 hvp_dict[val_id][weight_name] = running_hvp
 
+    
     elif hvp_cal == 'GradDot' or hvp_cal == "GradCos":
         hvp_dict = val_grad_dict.copy()
     else:

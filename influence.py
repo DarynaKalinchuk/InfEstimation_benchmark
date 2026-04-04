@@ -50,6 +50,7 @@ if __name__ == '__main__':
 
     elif (args.hvp_cal == "random"):
 
+        # not assuming balanced data sets
         train_var = dataset["train"]["variation"]
         eval_var = dataset["test"]["variation"]
         N = len(train_var)
@@ -107,7 +108,7 @@ if __name__ == '__main__':
 
         sim_matrix = []
         for item in tqdm(check):
-            arr = similarity_influence_estimation(test_vec=item, train_vecs=query,hvp_cal=args.hvp_cal)   # shape: [num_train]
+            arr = similarity_influence_estimation(test_vec=item, train_vecs=query,hvp_cal=args.hvp_cal)
             sim_matrix.append(arr)
 
         sim_df = pd.DataFrame(sim_matrix)

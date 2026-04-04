@@ -1,152 +1,175 @@
-# Author: Yaochen Zhu (uqp4qh@virginia.edu) and Xuansheng Wu (wuxsmail@163.com) 
-# Last Modify: 2024-01-11
-# Description: Computing the EK-FAC approximated influence function over a corpus.
-import os
-import re
-import json
-import tqdm
-import nltk
-import random
+"""
+Script to compute token-wise, differential influence scores for an LLM
+on the provided training and query datasets.
+"""
 import argparse
+import logging
 import os
-from datasets import load_from_disk
-import pickle as pkl
-from hooks_Llama import *
-
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+import numpy as np
+from typing import Dict
 
 import torch
-from hooks_Llama import *
-from ekfac_utils import *
+from datetime import timedelta
+from transformers import default_data_collator
+from accelerate import Accelerator, InitProcessGroupKwargs
+from datasets import load_from_disk
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+import kronfluence
+from kronfluence.analyzer import Analyzer, prepare_model
+from kronfluence.arguments import ScoreArguments
+from kronfluence.utils.common.score_arguments import all_low_precision_score_arguments
+from kronfluence.utils.dataset import DataLoaderKwargs
+from datetime import timedelta
+
+from kronfluence.arguments import ScoreArguments, FactorArguments
+from kronfluence.utils.common.factor_arguments import all_low_precision_factor_arguments
 
 
-seed = 12345
-random.seed(seed)
-torch.manual_seed(seed)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = True
+from utils import *
+from utilsekfac import construct_hf_model
+from utilsekfac import LanguageModelingTask
+
+BATCH_TYPE = Dict[str, torch.Tensor]
 
 
 
-if __name__ == "__main__":
+model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+dataset = "backdoor"
+epochs = 1
+max_length = 128
+output_dir="results/detailed_results/EKFAC"
+use_half_precision = False
+use_compile = False
+query_gradient_rank = -1
+save_id = True
 
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-
-
-    root = os.getcwd()
-    dataset_name = "backdoor"
-    result_folder = os.path.join("results/EKFAC", dataset_name)
-
-    dataset = load_from_disk("datasets/" + dataset_name)
-
-    train_corpus = list(dataset["train"])
-    train_texts = [
-        f"[INST] {sample['prompts'].strip()} [/INST] {sample['response'].strip()}"
-        for sample in train_corpus
-    ]
-
-    test_corpus = list(dataset["test"])
-
-    generator = Generator("/srv/home/users/kalinchukd23cs/InfEstimation_benchmark/finetuned_model/TinyLlama/backdoor_1", device="cuda")
+save_path = f"finetuned_model/{model_name}/{dataset}_{epochs}"
 
 
-    hooker = MLPHookController.LLaMA(generator._model)
-
-
-    inf_root = os.path.join(root, result_folder, model_name)
-
-    try:
-        inf_estimator = InfluenceEstimator.load_from_disk(inf_root)
-    except Exception:
-        ekfac_calculate_SVD_Lambda(corpus = train_texts, 
-                                    hooker = hooker,
-                                    generator = generator, 
-                                    save_path = inf_root,
-                                    batch_size_cov=2,
-                                    batch_size_lambda=1)
-        
-        inf_estimator = InfluenceEstimator.load_from_disk(inf_root)
-    
-    
-
-    num_train = len(train_texts)
-    num_test = len(test_corpus)
-    influence_matrix = torch.zeros((num_test, num_train), dtype=torch.float32)
-    
-    
-    # Loop over all the queries
-    for i, sample in enumerate(test_corpus):
+model = AutoModelForCausalLM.from_pretrained(
+    save_path,
+    dtype=torch.float32,
+)
+model.config.use_cache = False
 
         
-        prompt_text = f"[INST] {sample['prompts'].strip()} [/INST]"
-        response_text = sample["response"].strip()
-        
-        # tokenizing with truncation
-        max_len = 1024
-        prompt_ids = generator._tokenizer.encode(prompt_text, add_special_tokens=False,
-                                                truncation=True,
-                                                max_length=max_len,)
+
+config = {
+    "model": {
+        "family": "tinyllama",
+        "num_layers": model.config.num_hidden_layers,
+    }
+}
+
+task = LanguageModelingTask(config)
+model = kronfluence.prepare_model(model, task)
 
 
-        remaining = max_len - len(prompt_ids)
+kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=5400))  # 1.5 hours.
+accelerator = Accelerator(kwargs_handlers=[kwargs])
+model = accelerator.prepare_model(model)
 
-        response_ids = generator._tokenizer.encode(response_text, add_special_tokens=False,
-                                                    truncation=True,
-                                                    max_length=max(remaining, 0),
-                                                )
-        full_ids = prompt_ids + response_ids
-        ids = torch.tensor([full_ids], device=generator._model.device)
+if use_compile:
+    model = torch.compile(model)
 
-        out_mask = torch.tensor(
-            [[0] * len(prompt_ids) + [1] * len(response_ids)],
-            device=generator._model.device
-        )
+analyzer = Analyzer(
+    analysis_name="if_results",
+    model=model,
+    task=task,
+    profile=False,
+    output_dir=output_dir
+)
 
-        probs = torch.softmax(generator._model(input_ids=ids).logits, dim=-1)
 
-        
-        # Calculte the log probability
-        query_loss = compute_LM_loss(ids, out_mask, probs)[0]
-        query_loss.backward()
-        
-        # Backward propagation
-        with torch.no_grad():
-            ### Remove all the weights
-            query_grads = hooker.collect_weight_grads()
-            # use .copy, otherwise zero_grad will remove the grad
-            query_grads = {layer:grad.clone() for layer, (_, grad) in query_grads.items()}
-        zero_grad(generator._model)
-        
-        # Calculate the HVP for the query
-        query_hvps = inf_estimator.calculate_hvp(query_grads)
-        
-        bar = tqdm.tqdm(total=num_train, desc=f"Influence for Test Sample {i} out of {num_test}")
-        
-        for j in range(num_train):
-            # Forward propagation
-            train_text = train_texts[j]
-            inputs, outputs = generator.forward([train_text])
-            losses = compute_pseudo_loss(inputs["attention_mask"], outputs.logits)
-            for loss in losses:
-                loss.backward(retain_graph=True)
-            
-            # Backward propagation
-            with torch.no_grad():
-                grads = hooker.collect_weight_grads()
-                inf = inf_estimator.calculate_total_influence(query_hvps, grads)
-                influence_matrix[i, j] = inf.detach().cpu().item()
-            zero_grad(generator._model)
-            bar.update(1)
+# Configure parameters for DataLoader.
+dataloader_kwargs = DataLoaderKwargs(collate_fn=default_data_collator)
+analyzer.set_dataloader_kwargs(dataloader_kwargs)
 
-    save_root = os.path.join(root, result_folder, model_name)
-    os.makedirs(save_root, exist_ok=True)
 
-    print("Saving influence matrix...")
-    print(f"Shape: {tuple(influence_matrix.shape)}")  # (num_test, num_train)
-    torch.save(influence_matrix, os.path.join(save_root, "influence_matrix.pt"))
-    print(f"Saved to: {os.path.join(save_root, 'influence_matrix.pt')}")
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.padding_side = 'left'
+tokenizer.pad_token = tokenizer.eos_token
 
-        
+dataset = load_from_disk("datasets/" + dataset)
+
+#debug
+dataset["train"] = dataset["train"].select(range(5))
+dataset["test"] = dataset["test"].select(range(2))
+#debugend
+
+chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
+
+tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=max_length)    
+tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=max_length)
+
+
+factor_strategy = "diagonal"
+
+factor_args = FactorArguments(strategy=factor_strategy)
+if use_half_precision:
+    factor_args = all_low_precision_factor_arguments(
+        strategy=factor_strategy,
+        dtype=torch.float16
+    )
+    factor_strategy += "_half"
+if use_compile:
+    factor_strategy += "_compile"
+
+factor_args.covariance_max_examples = 1
+factor_args.lambda_max_examples = 1
+
+analyzer.fit_all_factors(
+    factors_name=factor_strategy,
+    dataset=tokenized_tr,
+    per_device_batch_size=1,
+    factor_args=factor_args,
+    overwrite_output_dir=True,
+)
+
+
+
+##### Compute pairwise scores. #####
+score_args = ScoreArguments()
+scores_name = "default_scores"
+
+
+if use_half_precision:
+    score_args = all_low_precision_score_arguments(dtype=torch.bfloat16)
+    scores_name += "_half"
+
+if use_compile:
+    scores_name += "_compile"
+
+rank = query_gradient_rank if query_gradient_rank != -1 else None
+if rank is not None:
+    score_args.query_gradient_low_rank = rank
+    score_args.query_gradient_accumulation_steps = 10
+    scores_name += f"_qlr{rank}"
+
+if save_id:
+    scores_name += f"_{save_id}"
+
+
+score_args.compute_per_token_scores = False
+score_args.aggregate_query_gradients = False
+scores_name = os.path.join(output_dir, scores_name)
+
+analyzer.compute_pairwise_scores(
+    scores_name=scores_name,
+    score_args=score_args,
+    factors_name=factor_strategy,   
+    query_dataset=tokenized_val,
+    train_dataset=tokenized_tr,
+    per_device_query_batch_size=1,
+    per_device_train_batch_size=1,
+    overwrite_output_dir=True,
+)
+
+
+
+scores = analyzer.load_pairwise_scores(scores_name)["all_modules"]
+print(f"Scores shape: {scores.shape}")
+print(f"Saved to: {scores_name}")
+
+
