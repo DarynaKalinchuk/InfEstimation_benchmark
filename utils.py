@@ -185,75 +185,213 @@ def gradient_influence_methods(tr_grad_dict, val_grad_dict, hvp_cal='GradDot', l
 
 
 
+import json
+import numpy as np
+from collections import defaultdict
+
+
 def check_acc_cov(influence, train_dataset, validation_dataset, metrics_path):
-    acc = 0
-    cov = 0
+    has_subvariation = (
+        "subvariation" in train_dataset.column_names
+        and "subvariation" in validation_dataset.column_names
+    )
 
-    #700/2 in backdoor case
-    cov_cnt = int(len(train_dataset) / len(set(train_dataset['variation'])))
-    
+    # 700/2 in backdoor case
+    cov_cnt = int(len(train_dataset) / len(set(train_dataset["variation"])))
+    n = len(influence)
 
-    for i in range(len(influence)):
-        #i-th row, so influence for i-th test sample across train, flip of sign
-        # => the more positive the more influential now
-        array = -(influence.loc[i].to_numpy())
-
-        # take #cov_cnt largest values
-        indices = np.argpartition(array, -cov_cnt)[-cov_cnt:]
-
-        # Indices of the top cov_cnt training samples,
-        # sorted by (-influence) from largest to smallest => first ones are more influential
-        topk_indices = indices[np.argsort(array[indices])[::-1]]
-
-        # does the sample ranked as most influential have the same variation label as the test sample?
-        if train_dataset['variation'][int(topk_indices[0])] == validation_dataset['variation'][i]:
-            acc += 1
-
-        # how many of the #cov_cnt samples with largest influence values have the same variation 
-        # as this test sample? 
-        for ele in topk_indices:
-            if train_dataset['variation'][int(ele)] == validation_dataset['variation'][i]:
-                cov += 1
-
-
-    acc_rate = acc / len(influence)
-    cov_rate = cov / (len(influence) * cov_cnt)
-    print("Acc:", acc_rate, '\nCover:', cov_rate)
-
-    metrics = {
-        "accuracy": acc_rate,
-        "coverage": cov_rate
+    overall = {
+        "variation": {"acc": 0, "cov": 0},
     }
 
-    with open(metrics_path, 'w') as f:
+    if has_subvariation:
+        overall["subvariation"] = {"acc": 0, "cov": 0}
+
+    per_variation = defaultdict(lambda: {"count": 0, "acc": 0, "cov": 0})
+    per_subvariation = (
+        defaultdict(lambda: {"count": 0, "acc": 0, "cov": 0})
+        if has_subvariation
+        else None
+    )
+
+    for i in range(n):
+        array = -(influence.loc[i].to_numpy())
+
+        indices = np.argpartition(array, -cov_cnt)[-cov_cnt:]
+        topk_indices = indices[np.argsort(array[indices])[::-1]]
+
+        val_variation = validation_dataset["variation"][i]
+        per_variation[val_variation]["count"] += 1
+
+        if has_subvariation:
+            val_subvariation = validation_dataset["subvariation"][i]
+            per_subvariation[val_subvariation]["count"] += 1
+
+        top1_idx = int(topk_indices[0])
+
+        if train_dataset["variation"][top1_idx] == val_variation:
+            overall["variation"]["acc"] += 1
+            per_variation[val_variation]["acc"] += 1
+
+        if has_subvariation:
+            if train_dataset["subvariation"][top1_idx] == val_subvariation:
+                overall["subvariation"]["acc"] += 1
+                per_subvariation[val_subvariation]["acc"] += 1
+
+        var_cov_hits = 0
+        subvar_cov_hits = 0
+
+        for ele in topk_indices:
+            ele = int(ele)
+
+            if train_dataset["variation"][ele] == val_variation:
+                overall["variation"]["cov"] += 1
+                var_cov_hits += 1
+
+            if has_subvariation:
+                if train_dataset["subvariation"][ele] == val_subvariation:
+                    overall["subvariation"]["cov"] += 1
+                    subvar_cov_hits += 1
+
+        per_variation[val_variation]["cov"] += var_cov_hits
+
+        if has_subvariation:
+            per_subvariation[val_subvariation]["cov"] += subvar_cov_hits
+
+    metrics = {
+        "overall": {
+            "variation": {
+                "accuracy": overall["variation"]["acc"] / n,
+                "coverage": overall["variation"]["cov"] / (n * cov_cnt),
+            }
+        },
+        "per_variation": {},
+    }
+
+    if has_subvariation:
+        metrics["overall"]["subvariation"] = {
+            "accuracy": overall["subvariation"]["acc"] / n,
+            "coverage": overall["subvariation"]["cov"] / (n * cov_cnt),
+        }
+        metrics["per_subvariation"] = {}
+
+    for var, vals in per_variation.items():
+        count = vals["count"]
+        metrics["per_variation"][str(var)] = {
+            "num_samples": count,
+            "accuracy": vals["acc"] / count if count > 0 else 0.0,
+            "coverage": vals["cov"] / (count * cov_cnt) if count > 0 else 0.0,
+        }
+
+    if has_subvariation:
+        for subvar, vals in per_subvariation.items():
+            count = vals["count"]
+            metrics["per_subvariation"][str(subvar)] = {
+                "num_samples": count,
+                "accuracy": vals["acc"] / count if count > 0 else 0.0,
+                "coverage": vals["cov"] / (count * cov_cnt) if count > 0 else 0.0,
+            }
+
+    print("Variation Acc:", metrics["overall"]["variation"]["accuracy"])
+    print("Variation Cover:", metrics["overall"]["variation"]["coverage"])
+
+    if has_subvariation:
+        print("Subvariation Acc:", metrics["overall"]["subvariation"]["accuracy"])
+        print("Subvariation Cover:", metrics["overall"]["subvariation"]["coverage"])
+
+    with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
+    return metrics
 
 
-def plot_all_acc_cov(results_dir="results", figsize_per_plot=(4, 4)):
-    
+
+def plot_all_acc_cov_oneplot(results_dir="results", figsize_per_subplot=(8, 6)):
     if not os.path.exists(results_dir):
         raise FileNotFoundError(f"Directory not found: {results_dir}")
 
     files = [
         f for f in os.listdir(results_dir)
-        if f.endswith("_acc_cov.json") and os.path.isfile(os.path.join(results_dir, f))
+        if f.endswith(".json") and os.path.isfile(os.path.join(results_dir, f))
     ]
 
     if not files:
-        raise ValueError(f"No *_acc_cov.json files found in {results_dir}")
+        raise ValueError(f"No .json files found in {results_dir}")
 
     files = sorted(files)
-    n = len(files)
+    plot_data = []
+    max_rows = 0
 
-    cols = math.ceil(math.sqrt(n)) 
+    for filename in files:
+        filepath = os.path.join(results_dir, filename)
+
+        with open(filepath, "r") as f:
+            metrics = json.load(f)
+
+        row_labels = []
+        values = []
+
+        overall = metrics.get("overall", {})
+
+        # -------------------------
+        # 1) overall variation first
+        # -------------------------
+        if "variation" in overall:
+            row_labels.append("overall variation")
+            values.append([
+                overall["variation"].get("accuracy", 0.0),
+                overall["variation"].get("coverage", 0.0),
+            ])
+
+        # -------------------------
+        # 2) all variations
+        # -------------------------
+        per_variation = metrics.get("per_variation", {})
+        for key in sorted(per_variation.keys(), key=str):
+            val = per_variation[key]
+            row_labels.append(f"variation: {key}")
+            values.append([
+                val.get("accuracy", 0.0),
+                val.get("coverage", 0.0),
+            ])
+
+        # -------------------------
+        # 3) overall subvariation
+        # -------------------------
+        if "subvariation" in overall:
+            row_labels.append("overall subvariation")
+            values.append([
+                overall["subvariation"].get("accuracy", 0.0),
+                overall["subvariation"].get("coverage", 0.0),
+            ])
+
+        # -------------------------
+        # 4) all subvariations
+        # -------------------------
+        per_subvariation = metrics.get("per_subvariation", {})
+        for key in sorted(per_subvariation.keys(), key=str):
+            val = per_subvariation[key]
+            row_labels.append(f"subvariation: {key}")
+            values.append([
+                val.get("accuracy", 0.0),
+                val.get("coverage", 0.0),
+            ])
+
+        if values:
+            values = np.array(values)
+            plot_data.append((filename, row_labels, values))
+            max_rows = max(max_rows, len(row_labels))
+
+    if not plot_data:
+        raise ValueError(f"No plottable metrics found in JSON files in {results_dir}")
+
+    n = len(plot_data)
+    cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
 
-    fig, axes = plt.subplots(
-        rows,
-        cols,
-        figsize=(figsize_per_plot[0] * cols, figsize_per_plot[1] * rows)
-    )
+    fig_width = figsize_per_subplot[0] * cols
+    fig_height = max(figsize_per_subplot[1] * rows, 0.35 * max_rows * rows + 1.2)
+    fig, axes = plt.subplots(rows, cols, figsize=(fig_width, fig_height))
 
     if rows == 1 and cols == 1:
         axes = [axes]
@@ -262,30 +400,50 @@ def plot_all_acc_cov(results_dir="results", figsize_per_plot=(4, 4)):
     else:
         axes = axes.flatten()
 
-    for ax, filename in zip(axes, files):
-        filepath = os.path.join(results_dir, filename)
+    im = None
 
-        with open(filepath, "r") as f:
-            metrics = json.load(f)
+    for ax, (filename, row_labels, values) in zip(axes, plot_data):
+        im = ax.imshow(values, aspect="auto", vmin=0, vmax=1, cmap="RdYlGn")
 
-        acc = metrics.get("accuracy", 0.0)
-        cov = metrics.get("coverage", 0.0)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Accuracy", "Coverage"])
+        ax.set_yticks(np.arange(len(row_labels)))
+        ax.set_yticklabels(row_labels)
 
-        bars = ax.bar(["Accuracy", "Coverage"], [acc, cov])
-        ax.set_ylim(0, 1)
-        ax.set_ylabel("Rate")
-        ax.bar_label(bars, fmt="%.4f", padding=3)
-        title = filename.replace("_acc_cov.json", "").replace("_", " ")
+        title = filename.replace(".json", "").replace("_", " ")
         ax.set_title(title, fontsize=10)
 
-    # Hide unused subplots
-    for ax in axes[n:]:
+        for i in range(values.shape[0]):
+            for j in range(values.shape[1]):
+                ax.text(
+                    j,
+                    i,
+                    f"{values[i, j] * 100:.2f}%",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
+
+    for ax in axes[len(plot_data):]:
         ax.axis("off")
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
 
+    if im is not None:
+        cbar = fig.colorbar(
+            im,
+            ax=axes[:len(plot_data)],
+            orientation="horizontal",
+            fraction=0.04,
+            pad=0.08
+        )
+        cbar.set_label("Rate")
+        ticks = np.linspace(0, 1, 6)
+        cbar.set_ticks(ticks)
+        cbar.set_ticklabels([f"{t * 100:.0f}%" for t in ticks])
 
-    plt.savefig(results_dir + "/acc_cov_plots.png", bbox_inches="tight")
+    plt.savefig(os.path.join(results_dir, "acc_cov_all_in_one.png"), bbox_inches="tight")
+    plt.close(fig)
 
 
 
@@ -324,3 +482,88 @@ def similarity_influence_estimation(test_vec, train_vecs, hvp_cal = "rep_cos_sim
         sim.append(sim_fn(test_vec, train_vecs[i]))
     return np.array(sim)
 
+
+def random_influence_estimation(dataset, metrics_path):
+    train_var = dataset["train"]["variation"]
+    eval_var = dataset["test"]["variation"]
+    N = len(train_var)
+
+    has_subvariation = (
+        "subvariation" in dataset["train"].column_names
+        and "subvariation" in dataset["test"].column_names
+    )
+
+    # counts in train set
+    var_counts = {}
+    for v in train_var:
+        var_counts[v] = var_counts.get(v, 0) + 1
+
+    if has_subvariation:
+        train_subvar = dataset["train"]["subvariation"]
+        eval_subvar = dataset["test"]["subvariation"]
+
+        subvar_counts = {}
+        for s in train_subvar:
+            subvar_counts[s] = subvar_counts.get(s, 0) + 1
+
+    # overall expected metrics
+    var_values = [var_counts[v] / N for v in eval_var]
+    var_acc_rate = np.mean(var_values)
+    var_cov_rate = np.mean(var_values)
+
+    metrics = {
+        "overall": {
+            "variation": {
+                "accuracy": float(var_acc_rate),
+                "coverage": float(var_cov_rate),
+            }
+        },
+        "per_variation": {},
+    }
+
+    # per-variation expected metrics
+    eval_var_counts = {}
+    for v in eval_var:
+        eval_var_counts[v] = eval_var_counts.get(v, 0) + 1
+
+    for v, count in eval_var_counts.items():
+        p = var_counts.get(v, 0) / N
+        metrics["per_variation"][str(v)] = {
+            "num_samples": count,
+            "accuracy": float(p),
+            "coverage": float(p),
+        }
+
+    if has_subvariation:
+        subvar_values = [subvar_counts[s] / N for s in eval_subvar]
+        subvar_acc_rate = np.mean(subvar_values)
+        subvar_cov_rate = np.mean(subvar_values)
+
+        metrics["overall"]["subvariation"] = {
+            "accuracy": float(subvar_acc_rate),
+            "coverage": float(subvar_cov_rate),
+        }
+
+        metrics["per_subvariation"] = {}
+
+        eval_subvar_counts = {}
+        for s in eval_subvar:
+            eval_subvar_counts[s] = eval_subvar_counts.get(s, 0) + 1
+
+        for s, count in eval_subvar_counts.items():
+            p = subvar_counts.get(s, 0) / N
+            metrics["per_subvariation"][str(s)] = {
+                "num_samples": count,
+                "accuracy": float(p),
+                "coverage": float(p),
+            }
+
+    print("Variation Acc:", metrics["overall"]["variation"]["accuracy"])
+    print("Variation Cover:", metrics["overall"]["variation"]["coverage"])
+
+    if has_subvariation:
+        print("Subvariation Acc:", metrics["overall"]["subvariation"]["accuracy"])
+        print("Subvariation Cover:", metrics["overall"]["subvariation"]["coverage"])
+
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)

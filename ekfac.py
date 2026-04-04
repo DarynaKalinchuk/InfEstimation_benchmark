@@ -38,13 +38,13 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 dataset = "backdoor"
 epochs = 1
 max_length = 128
-output_dir="results/detailed_results/EKFAC"
+output_dir="results/EKFAC"
 use_half_precision = False
 use_compile = False
 query_gradient_rank = -1
 save_id = True
 
-save_path = f"finetuned_model/{model_name}/{dataset}_{epochs}"
+save_path = f"finetuned_model/TinyLlama/{dataset}_{epochs}"
 
 
 model = AutoModelForCausalLM.from_pretrained(
@@ -153,7 +153,6 @@ if save_id:
 
 score_args.compute_per_token_scores = False
 score_args.aggregate_query_gradients = False
-scores_name = os.path.join(output_dir, scores_name)
 
 analyzer.compute_pairwise_scores(
     scores_name=scores_name,
