@@ -1,6 +1,12 @@
 from datasets import load_from_disk
 from transformers import AutoTokenizer
+
+
 from utils import *
+from postprocess_utils import *
+from inf_est_methods import *
+
+
 import pickle
 import argparse
 import os
@@ -43,33 +49,43 @@ if __name__ == '__main__':
 
     if args.hvp_cal == "ekfac":
 
-        influence_inf = pd.DataFrame(
-        torch.load(f"results/EKFAC/{args.dataset}/{model_name}/influence_matrix.pt").numpy(),
-        dtype=float
-    )
+
+        model_path = f"finetuned_model/{args.model}/{args.dataset}_{args.epochs}"
+
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            dtype=torch.float32,
+        )
+        model.config.use_cache = False
+
+            
+
+        config = {
+            "model": {
+                "family": "tinyllama",
+                "num_layers": model.config.num_hidden_layers,
+            }
+        }
+
+        scores = ekfac_influence_estimation(tokenizer,
+                                            model = model,
+                                            dataset = dataset,
+                                            config = config,
+                                            max_length = 128,
+                                            output_dir="results/EKFAC",
+                                            use_half_precision = False,
+                                            use_compile = False,
+                                            query_gradient_rank = -1,
+                                            save_id = True,
+                                            factor_strategy = "diagonal")
+
+        influence_inf = pd.DataFrame(-scores.cpu().numpy())
 
     elif (args.hvp_cal == "random"):
 
-        # not assuming balanced data sets
-        train_var = dataset["train"]["variation"]
-        eval_var = dataset["test"]["variation"]
-        N = len(train_var)
-        #count of train samples per variation
-        counts = {}
-        for v in train_var:
-            counts[v] = counts.get(v, 0) + 1
-
-        # expected accuracy = expected coverage
-        values = [counts[v] / N for v in eval_var]
-        acc_rate = cov_rate = np.mean(values)
-
-        metrics = {
-        "accuracy": acc_rate,
-        "coverage": cov_rate
-        }
-
-        with open(metrics_path, 'w') as f:
-            json.dump(metrics, f, indent=2)
+        print(f"Calculating random influence...")
+        
+        random_influence_estimation(dataset = dataset, metrics_path = metrics_path)
 
         sys.exit()
 
@@ -145,7 +161,7 @@ if __name__ == '__main__':
         item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
         )
 
-        influence_inf = gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, needed_args = inf_args_map)
+        influence_inf = gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, hyperparams = inf_args_map)
 
     cache_dir = 'cache/' + args.model + '/'
     os.makedirs(cache_dir, exist_ok=True)

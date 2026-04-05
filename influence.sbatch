@@ -7,7 +7,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=0-5:00:00 
 #SBATCH --container-workdir=/srv/home/users/kalinchukd23cs/InfEstimation_benchmark
-#SBATCH --nodelist=dgx-h100-em2
 
 python3 --version
 
@@ -19,7 +18,7 @@ echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
 HVP_METHOD="ekfac"
-INF_ARGS="lambda_const_param=0.0001,n_iteration=10,alpha_const=1."
+INF_ARGS="lambda_const_param=0.01,n_iteration=10,alpha_const=1."
 
 while read -r HVP_METHOD; do
     [ -z "$HVP_METHOD" ] && continue
@@ -44,4 +43,4 @@ while read -r HVP_METHOD; do
 done < hvp_settings.txt
 
 
-python3 -c "from utils import plot_all_acc_cov; plot_all_acc_cov()"
+python3 -c "from postprocess_utils import plot_all_acc_cov; plot_all_acc_cov()"
