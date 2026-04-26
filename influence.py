@@ -49,17 +49,25 @@ if __name__ == '__main__':
 
     if args.hvp_cal == "ekfac":
 
-
-        model_path = f"finetuned_model/{args.model}/{args.dataset}_{args.epochs}"
-
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            dtype=torch.float32,
+        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
+        model = PeftModel.from_pretrained(
+            model,
+            "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
         )
-        model.config.use_cache = False
 
-            
+        model = model.merge_and_unload()
 
+        # full fine-tuned model:
+        # 
+        # model_path = f"finetuned_model/{args.model}/{args.dataset}_{args.epochs}"
+
+        # model = AutoModelForCausalLM.from_pretrained(
+        #     model_path,
+        #     dtype=torch.float32,
+        # )
+        # model.config.use_cache = False    
+
+        
         config = {
             "model": {
                 "family": "tinyllama",

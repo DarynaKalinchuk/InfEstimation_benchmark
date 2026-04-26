@@ -238,8 +238,7 @@ from kronfluence.arguments import ScoreArguments, FactorArguments
 from kronfluence.utils.common.factor_arguments import all_low_precision_factor_arguments
 
 
-from utils import *
-from utilsekfac import LanguageModelingTask
+from utils import LanguageModelingTask, get_preprocessed_dataset
 
 
 def ekfac_influence_estimation(tokenizer,
