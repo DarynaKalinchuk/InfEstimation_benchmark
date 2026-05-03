@@ -10,7 +10,7 @@
 
 python3 --version
 
-IFS=',' read -r MODEL_NAME TEMPLATE VAL_FLAG MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA TARGET_LAYER LOAD_8BIT < finetune_params.txt
+IFS=',' read -r MODEL_NAME VAL_FLAG MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA TARGET_LAYER LOAD_8BIT < finetune_params.txt
 
 VAL_ARG=""
 if [ "$VAL_FLAG" == "True" ]; then
@@ -25,7 +25,6 @@ fi
 TRAIN_MODE="lora"
 
 echo "MODEL_NAME = $MODEL_NAME"
-echo "TEMPLATE = $TEMPLATE"
 echo "VAL_FLAG = $VAL_FLAG"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "BATCH_SIZE = $BATCH_SIZE"
@@ -44,7 +43,6 @@ while read -r DATASET_NAME; do
         --model $MODEL_NAME \
         $LOAD8BIT_ARG \
         --dataset $DATASET_NAME \
-        --template $TEMPLATE \
         $VAL_ARG \
         --max_length $MAX_LENGTH \
         --batch_size $BATCH_SIZE \

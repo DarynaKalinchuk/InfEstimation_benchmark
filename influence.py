@@ -11,6 +11,11 @@ import pickle
 import argparse
 import os
 import sys
+import glob
+from huggingface_hub import login
+
+with open("TOKENS.txt", "r") as f:
+    line = f.read().strip()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Fine-tuning LLMs")
@@ -18,7 +23,6 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True, help='dataset')
     parser.add_argument('--epochs', type=int, default=10, help='epochs')
     parser.add_argument('--hvp_cal', type=str, required=False, help='influence estimation method')
-    parser.add_argument('--template', type=str, default='llama2', help='chat template')
     parser.add_argument('--max_length', type=int, default=128, help='tokenizer padding max length')
     parser.add_argument('--lambda_c', type=float, default=10, help='lambda const')
     parser.add_argument('--iter', type=int, default=3, help='#iteration')
@@ -26,13 +30,12 @@ if __name__ == '__main__':
     parser.add_argument('--inf_args', type=str, required=False, help='Other args, method-specific.')
     args = parser.parse_args()
 
-    # if 'Llama' in args.model:
-    #     model_name = "/common/public/LLAMA2-HF/" + args.model
-    # if args.model == 'mistral':
-    #     model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
-    if args.model == 'TinyLlama':
-        model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-    else: raise Exception("Invalid model name.")
+    if args.model in {"Llama", "Qwen0.5", "Qwen1.5", "Olmo"}:
+        model_name, chat_template = template_setting(args.model)
+    else:
+        raise ValueError("Invalid model name")
+
+    core_path = f"{args.model}/{args.dataset}_{args.epochs}"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = 'left'
@@ -48,11 +51,14 @@ if __name__ == '__main__':
 
 
     if args.hvp_cal == "ekfac":
+        # these are from sbatch file
+        HVP_METHOD="ekfac"
+        INF_ARGS="lambda_const_param=0.01,n_iteration=10,alpha_const=1."
 
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
         model = PeftModel.from_pretrained(
             model,
-            "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+            "lora_adapter/" + core_path
         )
 
         model = model.merge_and_unload()
@@ -104,13 +110,11 @@ if __name__ == '__main__':
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto')
         model = PeftModel.from_pretrained(
             model,
-            "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+            "lora_adapter/" + core_path
         )
         model.eval()
 
-        if args.template == 'llama2':
-            chat_template = f"[INST] {{prompt}} [/INST]"
-        else: raise Exception("template options: [llama2]")
+        chat_template = chat_template.replace("{response}", "")
 
         print('Generate hidden states...')
 
@@ -139,13 +143,82 @@ if __name__ == '__main__':
 
         influence_inf = -sim_df  #negation because the larger the similarity, the better; unlike influence.
 
+    elif args.hvp_cal == "TracIn_Adam":
+
+        print("Calculating TracIn_Adam...")
+
+        ckpt_root = "lora_adapter/" + core_path
+
+        checkpoint_paths = sorted(
+            glob.glob(os.path.join(ckpt_root, "checkpoint-*")),
+            key=lambda x: int(x.split("-")[-1])
+        )[:1]
+
+        checkpoint_gradients = []
+
+        tokenized_tr = get_preprocessed_dataset(
+            tokenizer, dataset["train"], chat_template, max_length=args.max_length
+        )
+        tokenized_val = get_preprocessed_dataset(
+            tokenizer, dataset["test"], chat_template, max_length=args.max_length
+        )
+
+        for ckpt_path in checkpoint_paths:
+            print(f"Collecting gradients for {ckpt_path}")
+
+            tr_grad_dict, val_grad_dict, model = collect_gradient( # to be fixed `model`!
+                model_name,
+                ckpt_path,
+                tokenizer,
+                tokenized_tr,
+                tokenized_val,
+                return_model=True,
+            )
+
+            optimizer_path = os.path.join(ckpt_path, "optimizer.pt")
+            optimizer_state = torch.load(optimizer_path, map_location="cpu")
+
+            state = optimizer_state["state"]
+            param_groups = optimizer_state["param_groups"]
+
+            trainable_names = [
+                n for n, p in model.named_parameters()
+                if p.requires_grad
+            ]
+
+            param_ids = []
+            for group in param_groups:
+                param_ids.extend(group["params"])
+
+            assert len(trainable_names) == len(param_ids), (
+                len(trainable_names), len(param_ids)
+            )
+
+            adam_optimizer_state = {}
+
+            for name, pid in zip(trainable_names, param_ids):
+                adam_optimizer_state[name] = {
+                    "step": state[pid]["step"],
+                    "exp_avg": state[pid]["exp_avg"],
+                    "exp_avg_sq": state[pid]["exp_avg_sq"],
+                }
+
+            eta = 5e-5
+
+            checkpoint_gradients.append(
+                (eta, tr_grad_dict, val_grad_dict, adam_optimizer_state)
+            )
+
+        influence_inf = TracIn_Adam(
+            checkpoint_gradients,
+            beta1=0.9,
+            beta2=0.999,
+            eps=1e-8,
+        )
+
     else:
-        if args.template == 'llama2':
-            chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
-        else: raise Exception("template options: [llama2]")
 
         os.makedirs('grad/' + args.model , exist_ok=True)
-        core_path =  args.model + '/' + args.dataset + '_' + str(args.epochs)
 
         tr_grad_file = 'grad/' + core_path + '_tr.pkl'
         val_grad_file = 'grad/' + core_path + '_val.pkl'
@@ -171,11 +244,11 @@ if __name__ == '__main__':
 
         influence_inf = gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, hyperparams = inf_args_map)
 
-    cache_dir = 'cache/' + args.model + '/'
-    os.makedirs(cache_dir, exist_ok=True)
-    influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
-    check_acc_cov(influence = influence_inf, train_dataset = dataset['train'], 
-                  validation_dataset = dataset['test'], 
-                  metrics_path = metrics_path)
+    # cache_dir = 'cache/' + args.model + '/'
+    # os.makedirs(cache_dir, exist_ok=True)
+    # influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
+    # check_acc_cov(influence = influence_inf, train_dataset = dataset['train'], 
+    #               validation_dataset = dataset['test'], 
+    #               metrics_path = metrics_path)
 
 

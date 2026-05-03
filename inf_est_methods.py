@@ -31,13 +31,18 @@ def gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal='DataInf'
     if hyperparams is None:
         hyperparams = {}
     
-    
-    print(f"Calculating influence with {hvp_cal}.")
-    print(f"All params: {hyperparams}")
-    
+  
     lambda_const_param = float(hyperparams.get("lambda_const_param", 10)) #default
     n_iteration = int(hyperparams.get("n_iteration", 10)) #default
     alpha_const = float(hyperparams.get("alpha_const", 1.0)) #default
+
+
+    print(f"Calculating influence with {hvp_cal}.")
+    print(
+        f"Params: lambda_const_param={lambda_const_param}, "
+        f"n_iteration={n_iteration}, "
+        f"alpha_const={alpha_const}"
+    )
 
     hvp_dict = defaultdict(dict)
     IF_dict = defaultdict(dict)
@@ -217,6 +222,67 @@ def random_influence_estimation(dataset, metrics_path):
         json.dump(metrics, f, indent=2)
 
 
+# TRACIN
+from collections import defaultdict
+import torch
+import pandas as pd
+
+
+def TracIn_Adam(
+    checkpoint_gradients,
+    beta1=0.9,
+    beta2=0.999,
+    eps=1e-8,
+):
+    IF_dict = defaultdict(dict)
+
+    for eta, tr_grad_dict, val_grad_dict, adam_optimizer_state in checkpoint_gradients:
+
+        gamma_dict = defaultdict(dict)
+
+        for tr_id, param_grads in tr_grad_dict.items():
+            for weight_name, g in param_grads.items():
+
+                exp_avg = adam_optimizer_state[weight_name]["exp_avg"].to(g.device)
+                exp_avg_sq = adam_optimizer_state[weight_name]["exp_avg_sq"].to(g.device)
+
+                assert exp_avg.shape == g.shape, (weight_name, exp_avg.shape, g.shape)
+
+                updated_avg = beta1 * exp_avg + (1 - beta1) * g
+                updated_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * (g ** 2)
+
+                gamma_dict[tr_id][weight_name] = updated_avg / torch.sqrt(
+                    updated_avg_sq + eps
+                )
+
+        for tr_id in tr_grad_dict:
+            for val_id in val_grad_dict:
+
+                device = next(iter(val_grad_dict[val_id].values())).device
+
+                dot = torch.tensor(0.0, device=device)
+                norm_val = torch.tensor(0.0, device=device)
+                norm_gamma = torch.tensor(0.0, device=device)
+
+                for weight_name, g_val in val_grad_dict[val_id].items():
+                    if weight_name not in gamma_dict[tr_id]:
+                        continue
+
+                    gamma = gamma_dict[tr_id][weight_name].to(g_val.device)
+
+                    dot += torch.sum(g_val * gamma)
+                    norm_val += torch.sum(g_val * g_val)
+                    norm_gamma += torch.sum(gamma * gamma)
+
+                cos_sim = dot / (
+                    torch.sqrt(norm_val) * torch.sqrt(norm_gamma) + 1e-12
+                )
+
+                IF_dict[tr_id][val_id] = (
+                    IF_dict[tr_id].get(val_id, 0.0) + eta * cos_sim.item()
+                )
+
+    return pd.DataFrame(IF_dict, dtype=float)
 
 
 """
@@ -251,7 +317,8 @@ def ekfac_influence_estimation(tokenizer,
                             use_compile = False,
                             query_gradient_rank = -1,
                             save_id = True,
-                            factor_strategy = "diagonal"):
+                            factor_strategy = "diagonal",
+                            chat_template = f"[INST] {{prompt}} [/INST] {{response}}"):
 
 
     
@@ -282,7 +349,6 @@ def ekfac_influence_estimation(tokenizer,
     analyzer.set_dataloader_kwargs(dataloader_kwargs)
 
 
-    chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
 
     tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=max_length)    
     tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=max_length)

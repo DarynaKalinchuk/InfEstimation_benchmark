@@ -10,15 +10,12 @@
 
 python3 --version
 
-IFS=',' read -r MODEL_NAME TEMPLATE VAL_FLAG MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA TARGET_LAYER LOAD_8BIT < finetune_params.txt
+IFS=',' read -r MODEL_NAME VAL_FLAG MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA TARGET_LAYER LOAD_8BIT < finetune_params.txt
 
 echo "MODEL_NAME = $MODEL_NAME"
-echo "TEMPLATE = $TEMPLATE"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "EPOCHS = $EPOCHS"
 
-HVP_METHOD="ekfac"
-INF_ARGS="lambda_const_param=0.01,n_iteration=10,alpha_const=1."
 
 while read -r HVP_METHOD; do
     [ -z "$HVP_METHOD" ] && continue
@@ -34,7 +31,6 @@ while read -r HVP_METHOD; do
             --dataset "$DATASET_NAME" \
             --epochs "$EPOCHS" \
             --hvp_cal "$HVP_METHOD" \
-            --template "$TEMPLATE" \
             --inf_args "$INF_ARGS" \
             --max_length "$MAX_LENGTH"
 

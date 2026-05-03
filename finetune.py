@@ -1,19 +1,24 @@
 from datasets import load_from_disk
 from peft import LoraConfig, get_peft_model
-from utils import get_preprocessed_dataset
+from utils import get_preprocessed_dataset, template_setting
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig
 import argparse
 import warnings
 import os
 import torch
+from huggingface_hub import login
 warnings.filterwarnings("ignore")
+
+with open("TOKENS.txt", "r") as f:
+    line = f.read().strip()
+
+login(token=line.split("=", 1)[1].strip().strip('"'))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Fine-tuning LLMs")
     parser.add_argument('--model', type=str, default='TinyLlama', help='model name')
     parser.add_argument('--load_in_8bit', action='store_true', default=False, help='whether to quantize the LLM')
     parser.add_argument('--dataset', type=str, required=True, help='dataset')
-    parser.add_argument('--template', type=str, default='llama2', help='chat template')
     parser.add_argument('--val', action='store_true', default=False, help='whether to test on the validation set')
     parser.add_argument('--max_length', type=int, default=128, help='tokenizer padding max length')
     parser.add_argument('--batch_size', type=int, default=24, help='batch size')
@@ -22,25 +27,24 @@ if __name__ == '__main__':
     parser.add_argument('--lora_r', type=int, default=4, help='lora rank')
     parser.add_argument('--lora_alpha', type=int, default=32, help='lora alpha')
     parser.add_argument('--target_layer', type=str, default='-1', help='target_modules in lora')
+    parser.add_argument('--train_mode', type=str, default='lora', choices=['lora', 'full'])
     args = parser.parse_args()
     
     os.environ["TENSORBOARD_LOGGING_DIR"] = "./logs"
     
-    # if 'Llama' in args.model:
-    #     model_name = "/common/public/LLAMA2-HF/" + args.model
-    # if args.model == 'mistral':
-    #     model_name = 'mistralai/Mistral-7B-Instruct-v0.3'
-    if args.model == 'TinyLlama':
-        model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-    else: raise Exception("Invalid model name.")
+    if args.model in {"Llama", "Qwen0.5", "Qwen1.5", "Olmo"}:
+        model_name, chat_template = template_setting(args.model)
+    else:
+        raise ValueError("Invalid model name")
 
-
+    
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = 'left'
-    tokenizer.pad_token = tokenizer.eos_token
-    if args.template == 'llama2':
-        chat_template = f"[INST] {{prompt}} [/INST] {{response}}"
-    else: raise Exception("template options: [llama2]")
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+
+
 
     dataset = load_from_disk("datasets/" + args.dataset)
     train_dataset = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
@@ -51,7 +55,7 @@ if __name__ == '__main__':
     print(f"Training for {args.epochs} epochs with batch size {args.batch_size}")
 
 
-    save_path = "lora_adapter/" + args.model + '/' + args.dataset + '_' + str(args.epochs)
+    save_path = f"lora_adapter/{args.model}/{args.dataset}_{args.epochs}"
 
 
     quantization_config = BitsAndBytesConfig(load_in_8bit=True) if args.load_in_8bit else None
@@ -66,13 +70,14 @@ if __name__ == '__main__':
 
         
     training_args = TrainingArguments(
-        output_dir="./lora_adapter",
+        output_dir=save_path,
         per_device_train_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
         logging_steps=args.logging_step,
         save_steps=10,
-        save_total_limit=1,
-        remove_unused_columns=False
+        save_total_limit=10, # number of checkpoints
+        remove_unused_columns=False,
+        learning_rate = 5e-5
     )
 
 

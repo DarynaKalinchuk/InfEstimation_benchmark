@@ -87,6 +87,44 @@ def collect_gradient(model_name, lora_adapter_path, tokenizer, tokenized_tr, tok
     return tr_grad_dict, val_grad_dict
 
 
+def template_setting(model_n):
+    if model_n == 'Llama':
+        model_name = "meta-llama/Llama-3.2-1B-Instruct"
+        chat_template = (
+            "<|begin_of_text|>"
+            "<|start_header_id|>user<|end_header_id|>\n"
+            "{prompt}<|eot_id|>\n"
+            "<|start_header_id|>assistant<|end_header_id|>\n"
+            "{response}"
+        )
+    elif model_n == 'Qwen0.5':
+        model_name = "Qwen/Qwen2.5-0.5B-Instruct"
+        chat_template = (
+            "<|im_start|>user\n"
+            "{prompt}<|im_end|>\n"
+            "<|im_start|>assistant\n"
+            "{response}<|im_end|>"
+        )
+    
+    elif model_n == 'Qwen1.5':
+        model_name = "Qwen/Qwen2-1.5B-Instruct"
+        chat_template = (
+            "<|im_start|>user\n"
+            "{prompt}<|im_end|>\n"
+            "<|im_start|>assistant\n"
+            "{response}<|im_end|>"
+        )
+
+    elif model_n == "Olmo":
+        model_name = "allenai/OLMo-2-0425-1B-SFT"
+        chat_template = (
+            "<|user|>\n"
+            "{prompt}\n"
+            "<|assistant|>\n"
+            "{response}<|endoftext|>"
+        )
+
+    return model_name, chat_template
 
 
 
