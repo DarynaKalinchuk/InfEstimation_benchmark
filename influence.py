@@ -239,6 +239,63 @@ if __name__ == '__main__':
             elapsed = time.perf_counter() - start
             print(f"TracIn_Adam took {elapsed:.2f} seconds")
 
+
+    elif args.hvp_cal == "TracIn":
+
+        print("Calculating TracIn...")
+
+        ckpt_root = "lora_adapter/" + core_path
+
+        checkpoint_paths = sorted(
+            glob.glob(os.path.join(ckpt_root, "checkpoint-*")),
+            key=lambda x: int(x.split("-")[-1])
+        ) # [:1] for testing just the 1 check point
+
+
+
+        tokenized_tr = get_preprocessed_dataset(
+            tokenizer, dataset["train"], chat_template, max_length=args.max_length
+        )
+        tokenized_val = get_preprocessed_dataset(
+            tokenizer, dataset["test"], chat_template, max_length=args.max_length
+        )
+
+        influence_inf = None
+
+        for ckpt_path in tqdm(checkpoint_paths, desc="Checkpoints"):
+            print(f"Collecting gradients for {ckpt_path}")
+
+            
+            model = PeftModel.from_pretrained(base_model, ckpt_path, is_trainable=True)
+
+            tr_grad_dict, val_grad_dict = collect_gradient( 
+                model,
+                tokenizer,
+                tokenized_tr,
+                tokenized_val
+            )
+
+            
+            eta = 5e-5
+
+            checkpoint_gradients = (eta, tr_grad_dict, val_grad_dict)
+
+            print("Estimating TracIn influence for this checkpoint...")
+            start = time.perf_counter()
+
+            checkpoint_influence = TracIn(
+                checkpoint_gradients,
+                normalize=True,   # set False for pure dot-product TracIn
+            )
+
+            if influence_inf is None:
+                influence_inf = checkpoint_influence
+            else:
+                influence_inf += checkpoint_influence
+
+            elapsed = time.perf_counter() - start
+            print(f"TracIn took {elapsed:.2f} seconds")
+
     else:
 
         os.makedirs('grad/' + args.model , exist_ok=True)
