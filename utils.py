@@ -10,6 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import os
 import json
 import math
+import re
 
 def get_preprocessed_dataset(tokenizer, dataset, chat_template, max_length):
     def apply_prompt_template(sample):
@@ -213,3 +214,18 @@ class LanguageModelingTask(Task):
     def get_attention_mask(self, batch: BATCH_TYPE) -> torch.Tensor:
         return batch["attention_mask"]
 
+
+
+def get_eta_from_trainer_state(ckpt_path):
+
+    state_path = os.path.join(ckpt_path, "trainer_state.json")
+    step = int(re.search(r"checkpoint-(\d+)", ckpt_path).group(1))
+
+    with open(state_path, "r") as f:
+        state = json.load(f)
+
+    for entry in state["log_history"]:
+        if entry.get("step") == step and "learning_rate" in entry:
+            return entry["learning_rate"]
+
+    raise ValueError(f"No exact learning rate found for checkpoint step {step}")

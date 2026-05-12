@@ -336,7 +336,7 @@ def TracIn_Adam(
 def TracIn(
     checkpoint_gradients,
     device="cuda",
-    normalize=False,
+
 ):
     eta, tr_grad_dict, val_grad_dict = checkpoint_gradients
 
@@ -366,9 +366,6 @@ def TracIn(
         for val_id in val_ids
     ]).to(device)
 
-    if normalize:
-        G_train = F.normalize(G_train, dim=1)
-        G_val = F.normalize(G_val, dim=1)
 
     # Shape: [N_train, N_val]
     scores = -eta * (G_train @ G_val.T)

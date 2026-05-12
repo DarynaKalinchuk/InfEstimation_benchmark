@@ -276,7 +276,7 @@ if __name__ == '__main__':
             )
 
             
-            eta = 5e-5
+            eta = get_eta_from_trainer_state(ckpt_path)
 
             checkpoint_gradients = (eta, tr_grad_dict, val_grad_dict)
 
@@ -285,7 +285,6 @@ if __name__ == '__main__':
 
             checkpoint_influence = TracIn(
                 checkpoint_gradients,
-                normalize=True,   # set False for pure dot-product TracIn
             )
 
             if influence_inf is None:
@@ -303,24 +302,19 @@ if __name__ == '__main__':
         tr_grad_file = 'grad/' + core_path + '_tr.pkl'
         val_grad_file = 'grad/' + core_path + '_val.pkl'
 
-        if os.path.exists(tr_grad_file) and os.path.exists(val_grad_file):
-            with open(tr_grad_file, 'rb') as f:
-                tr_grad_dict = pickle.load(f)
-            with open(val_grad_file, 'rb') as f:
-                val_grad_dict = pickle.load(f)
-        else:
-            print('collecting grad...')
-            tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
-            tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=args.max_length)
-            
-            
-            model = PeftModel.from_pretrained(base_model, "lora_adapter/" + core_path, is_trainable=True)
-            
-            tr_grad_dict, val_grad_dict = collect_gradient(model, tokenizer, tokenized_tr, tokenized_val)
-            with open(tr_grad_file, 'wb') as f:
-                pickle.dump(tr_grad_dict, f)
-            with open(val_grad_file, 'wb') as f:
-                pickle.dump(val_grad_dict, f)
+
+        print('collecting grad...')
+        tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
+        tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=args.max_length)
+        
+        
+        model = PeftModel.from_pretrained(base_model, "lora_adapter/" + core_path, is_trainable=True)
+        
+        tr_grad_dict, val_grad_dict = collect_gradient(model, tokenizer, tokenized_tr, tokenized_val)
+        with open(tr_grad_file, 'wb') as f:
+            pickle.dump(tr_grad_dict, f)
+        with open(val_grad_file, 'wb') as f:
+            pickle.dump(val_grad_dict, f)
 
         inf_args_map = dict(
         item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
