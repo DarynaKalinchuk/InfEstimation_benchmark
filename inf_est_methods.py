@@ -224,60 +224,6 @@ def TracIn_Adam(
 
 
 
-def TracIn(
-    checkpoint_gradients,
-    device="cuda",
-
-):
-    eta, tr_grad_dict, val_grad_dict = checkpoint_gradients
-
-    train_ids = list(tr_grad_dict.keys())
-    val_ids = list(val_grad_dict.keys())
-
-    def flatten_grad_dict(example_grad_dict, param_order):
-        parts = []
-        for name in param_order:
-            g = example_grad_dict[name]
-            parts.append(g.reshape(-1))
-        return torch.cat(parts)
-
-    # Use params present in both train and val gradients
-    param_order = [
-        name for name in next(iter(tr_grad_dict.values())).keys()
-        if name in next(iter(val_grad_dict.values()))
-    ]
-
-    G_train = torch.stack([
-        flatten_grad_dict(tr_grad_dict[tr_id], param_order)
-        for tr_id in train_ids
-    ]).to(device)
-
-    G_val = torch.stack([
-        flatten_grad_dict(val_grad_dict[val_id], param_order)
-        for val_id in val_ids
-    ]).to(device)
-
-
-    # Shape: [N_train, N_val]
-    scores = -eta * (G_train @ G_val.T)
-
-    df = pd.DataFrame(
-        scores.T.detach().cpu().numpy(),
-        index=val_ids,
-        columns=train_ids,
-        dtype=float,
-    )
-
-    del G_train, G_val, scores
-    torch.cuda.empty_cache()
-
-    print(df.shape)
-    return df
-
-
-
-
-
 def gradient_influence_estimation(
     tr_grad_dict,
     val_grad_dict,

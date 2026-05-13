@@ -189,6 +189,9 @@ if __name__ == '__main__':
             state = optimizer_state["state"]
             param_groups = optimizer_state["param_groups"]
 
+            beta1, beta2 = param_groups[0]["betas"]
+            eps = param_groups[0]["eps"]
+
             trainable_params = [
                 (n, p) for n, p in model.named_parameters()
                 if p.requires_grad
@@ -226,9 +229,9 @@ if __name__ == '__main__':
 
             checkpoint_influence = TracIn_Adam(
                 checkpoint_gradients,
-                beta1=0.9,
-                beta2=0.999,
-                eps=1e-8,
+                beta1=beta1,
+                beta2=beta2,
+                eps=eps,
             )
 
             if influence_inf is None:
