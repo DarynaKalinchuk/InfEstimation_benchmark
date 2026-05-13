@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
             del model
             torch.cuda.empty_cache()
-            eta = 5e-5
+            eta = get_eta_from_trainer_state(ckpt_path)
 
             checkpoint_gradients = (eta, tr_grad_dict, val_grad_dict, adam_optimizer_state)
             
@@ -278,13 +278,11 @@ if __name__ == '__main__':
             
             eta = get_eta_from_trainer_state(ckpt_path)
 
-            checkpoint_gradients = (eta, tr_grad_dict, val_grad_dict)
-
-            print("Estimating TracIn influence for this checkpoint...")
-            start = time.perf_counter()
-
-            checkpoint_influence = TracIn(
-                checkpoint_gradients,
+            checkpoint_influence = gradient_influence_estimation(
+                tr_grad_dict=tr_grad_dict,
+                val_grad_dict=val_grad_dict,
+                hvp_cal="TracIn",
+                hyperparams={"eta": eta},
             )
 
             if influence_inf is None:
@@ -292,15 +290,9 @@ if __name__ == '__main__':
             else:
                 influence_inf += checkpoint_influence
 
-            elapsed = time.perf_counter() - start
-            print(f"TracIn took {elapsed:.2f} seconds")
+
 
     else:
-
-        os.makedirs('grad/' + args.model , exist_ok=True)
-
-        tr_grad_file = 'grad/' + core_path + '_tr.pkl'
-        val_grad_file = 'grad/' + core_path + '_val.pkl'
 
 
         print('collecting grad...')
@@ -311,10 +303,7 @@ if __name__ == '__main__':
         model = PeftModel.from_pretrained(base_model, "lora_adapter/" + core_path, is_trainable=True)
         
         tr_grad_dict, val_grad_dict = collect_gradient(model, tokenizer, tokenized_tr, tokenized_val)
-        with open(tr_grad_file, 'wb') as f:
-            pickle.dump(tr_grad_dict, f)
-        with open(val_grad_file, 'wb') as f:
-            pickle.dump(val_grad_dict, f)
+
 
         inf_args_map = dict(
         item.split('=') for item in (args.inf_args.split(',') if args.inf_args else [])
