@@ -10,7 +10,7 @@ import math
 
 
 
-def check_acc_cov(influence, train_dataset, validation_dataset, metrics_path):
+def run_benchmark_measures(influence, train_dataset, validation_dataset, metrics_path, time_elapsed):
     has_subvariation = (
         "subvariation" in train_dataset.column_names
         and "subvariation" in validation_dataset.column_names
@@ -86,6 +86,7 @@ def check_acc_cov(influence, train_dataset, validation_dataset, metrics_path):
             per_subvariation[val_subvariation]["cov"] += subvar_cov_hits
 
     metrics = {
+        "time_elapsed": time_elapsed,
         "overall": {
             "variation": {
                 "accuracy": overall["variation"]["acc"] / n,
@@ -159,6 +160,7 @@ def plot_all_acc_cov(results_dir="results", figsize_per_subplot=(8, 6)):
         values = []
 
         overall = metrics.get("overall", {})
+        time_elapsed = metrics.get("time_elapsed", None)
 
         # -------------------------
         # 1) overall variation first
@@ -206,7 +208,7 @@ def plot_all_acc_cov(results_dir="results", figsize_per_subplot=(8, 6)):
 
         if values:
             values = np.array(values)
-            plot_data.append((filename, row_labels, values))
+            plot_data.append((filename, row_labels, values, time_elapsed))
             max_rows = max(max_rows, len(row_labels))
 
     if not plot_data:
@@ -217,7 +219,8 @@ def plot_all_acc_cov(results_dir="results", figsize_per_subplot=(8, 6)):
     rows = math.ceil(n / cols)
 
     fig_width = figsize_per_subplot[0] * cols
-    fig_height = max(figsize_per_subplot[1] * rows, 0.35 * max_rows * rows + 1.2)
+    fig_height = max(figsize_per_subplot[1] * rows, 0.35 * max_rows * rows + 1.5)
+
     fig, axes = plt.subplots(rows, cols, figsize=(fig_width, fig_height))
 
     if rows == 1 and cols == 1:
@@ -229,15 +232,20 @@ def plot_all_acc_cov(results_dir="results", figsize_per_subplot=(8, 6)):
 
     im = None
 
-    for ax, (filename, row_labels, values) in zip(axes, plot_data):
+    for ax, (filename, row_labels, values, time_elapsed) in zip(axes, plot_data):
         im = ax.imshow(values, aspect="auto", vmin=0, vmax=1, cmap="RdYlGn")
 
         ax.set_xticks([0, 1])
         ax.set_xticklabels(["Accuracy", "Coverage"])
+
         ax.set_yticks(np.arange(len(row_labels)))
         ax.set_yticklabels(row_labels)
 
         title = filename.replace(".json", "").replace("_", " ")
+
+        if time_elapsed is not None:
+            title += f"\nTime elapsed: {time_elapsed:.2f}s"
+
         ax.set_title(title, fontsize=10)
 
         for i in range(values.shape[0]):
@@ -264,10 +272,16 @@ def plot_all_acc_cov(results_dir="results", figsize_per_subplot=(8, 6)):
             fraction=0.04,
             pad=0.08
         )
+
         cbar.set_label("Rate")
+
         ticks = np.linspace(0, 1, 6)
         cbar.set_ticks(ticks)
         cbar.set_ticklabels([f"{t * 100:.0f}%" for t in ticks])
 
-    plt.savefig(os.path.join(results_dir, "acc_cov_all_in_one.png"), bbox_inches="tight")
+    plt.savefig(
+        os.path.join(results_dir, "acc_cov_all_in_one2.png"),
+        bbox_inches="tight"
+    )
+
     plt.close(fig)

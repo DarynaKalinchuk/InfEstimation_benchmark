@@ -54,7 +54,8 @@ if __name__ == '__main__':
     quantization_config = None
     base_model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=quantization_config, device_map='auto')
 
-
+    start_time = time.time()
+    
     if args.hvp_cal == "ekfac":
         # these are from sbatch file
         HVP_METHOD="ekfac"
@@ -205,7 +206,6 @@ if __name__ == '__main__':
     else:
 
 
-        print('collecting grad...')
         tokenized_tr = get_preprocessed_dataset(tokenizer, dataset['train'], chat_template, max_length=args.max_length)
         tokenized_val = get_preprocessed_dataset(tokenizer, dataset['test'], chat_template, max_length=args.max_length)
         
@@ -221,11 +221,14 @@ if __name__ == '__main__':
 
         influence_inf = gradient_influence_estimation(tr_grad_dict, val_grad_dict, hvp_cal=args.hvp_cal, hyperparams = inf_args_map)
 
+    end_time = time.time()
+
     cache_dir = 'cache/' + args.model + '/'
     os.makedirs(cache_dir, exist_ok=True)
     influence_inf.to_csv(cache_dir + args.dataset + '_' + str(args.epochs) + args.hvp_cal + '.csv', index_label=False)
-    check_acc_cov(influence = influence_inf, train_dataset = dataset['train'], 
+    run_benchmark_measures(influence = influence_inf, train_dataset = dataset['train'], 
                   validation_dataset = dataset['test'], 
-                  metrics_path = metrics_path)
+                  metrics_path = metrics_path,
+                  time_elapsed = end_time - start_time)
 
 
