@@ -83,26 +83,6 @@ if __name__ == '__main__':
 
         influence_inf = BM25_scores(dataset = dataset)
 
-    elif args.inf_method == "RepSim":
-
-        base_model = AutoModelForCausalLM.from_pretrained(model_name, 
-                                                      device_map='cuda')
-
-        model = PeftModel.from_pretrained(
-                base_model,
-                "lora_adapter/" + core_path
-            )
-        
-        model.config.use_cache = False
-        model.to("cuda")
-        model.eval()
-
-        influence_inf = RepSim(
-        model=model,
-        tokenizer=tokenizer,
-        train_prompts=dataset["train"]["prompts"],
-        test_prompts=dataset["test"]["prompts"],
-    )
 
     elif args.inf_method == "EKFAC":
 

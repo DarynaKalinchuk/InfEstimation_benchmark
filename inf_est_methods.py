@@ -10,48 +10,52 @@ from rank_bm25 import BM25Plus
 
 def random_influence_estimation(dataset, metrics_path):
 
-    print(f"Calculating random influence...")
+    print("Calculating random influence...")
 
     train_var = dataset["train"]["variation"]
     eval_var = dataset["test"]["variation"]
     N = len(train_var)
 
-    # counts in train set
+    # Counts in the training set
     var_counts = {}
     for v in train_var:
         var_counts[v] = var_counts.get(v, 0) + 1
 
-    # overall expected metrics
-    var_values = [var_counts[v] / N for v in eval_var]
+    # N-th harmonic number
+    H_N = sum(1 / r for r in range(1, N + 1))
+
+    def expected_map(K):
+        if K == 0:
+            return 0.0
+
+        return (
+            H_N
+            + ((K - 1) * (N - H_N)) / (N - 1)
+        ) / N
+
+    accuracy_values = [
+        var_counts.get(v, 0) / N
+        for v in eval_var
+    ]
+
+    map_values = [
+        expected_map(var_counts.get(v, 0))
+        for v in eval_var
+    ]
 
     metrics = {
-        "overall": {
-            "variation": {
-                "accuracy": float(np.mean(var_values)),
-                "coverage": float(np.mean(var_values)),
-            }
-        },
-        "per_variation": {},
+        "accuracy": float(np.mean(accuracy_values)),
+        "map": float(np.mean(map_values)),
     }
 
-    # per-variation expected metrics
-    eval_var_counts = {}
-    for v in eval_var:
-        eval_var_counts[v] = eval_var_counts.get(v, 0) + 1
-
-    for v, count in eval_var_counts.items():
-        p = var_counts.get(v, 0) / N
-        metrics["per_variation"][str(v)] = {
-            "num_samples": count,
-            "accuracy": float(p),
-            "coverage": float(p),
-        }
-
-    print("Variation Acc:", metrics["overall"]["variation"]["accuracy"])
-    print("Variation Cover:", metrics["overall"]["variation"]["coverage"])
+    print("Accuracy:", metrics["accuracy"])
+    print("MAP:", metrics["map"])
 
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
+
+    return metrics
+
 
 
 def GradDot(
@@ -648,57 +652,6 @@ def BM25_scores(dataset):
     bm25_df = pd.DataFrame(scores)
 
     return bm25_df
-
-
-
-def RepSim(
-    model,
-    tokenizer,
-    train_prompts,
-    test_prompts,
-    device="cuda"
-):
-
-# needs fixing! just pass empty responses!
-    chat_template = chat_template.replace("{response}", "")
-
-    def get_hidden_states(prompts):
-        reps = []
-
-        for p in tqdm(prompts):
-            inputs = tokenizer(
-                chat_template.format(prompt=p),
-                padding=True,
-                return_tensors="pt"
-            ).to(device)
-
-            with torch.no_grad():
-                outputs = model(**inputs, output_hidden_states=True)
-
-            reps.append(
-                outputs.hidden_states[-1][:, -1, :]
-                .view(-1)
-                .float()
-                .cpu()
-                .numpy()
-            )
-
-        reps = np.asarray(reps)
-        norms = np.linalg.norm(reps, axis=1, keepdims=True)
-        reps = reps / np.clip(norms, 1e-12, None)
-        return reps
-
-
-    print("Generating test representations...")
-    test_reps = get_hidden_states(test_prompts)
-
-    print("Generating train representations...")
-    train_reps = get_hidden_states(train_prompts)
-
-    sim_matrix = test_reps @ train_reps.T
-
-    return pd.DataFrame(sim_matrix)
-
 
 
 

@@ -11,6 +11,7 @@ import numpy as np
 from huggingface_hub import login
 warnings.filterwarnings("ignore")
 import sys
+import shutil
 
 seed = 1
 print(f"Setting random seed: {seed}")
@@ -101,6 +102,8 @@ if __name__ == '__main__':
 
 
     model = get_peft_model(model, lora_config)
+
+    print_lora_coverage(model)
 
     if "random" in args.model:
         model.save_pretrained(save_path)

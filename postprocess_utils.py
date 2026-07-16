@@ -12,25 +12,24 @@ from pathlib import Path
 from matplotlib.ticker import PercentFormatter
 from datasets import load_from_disk
 import pandas as pd
-from pathlib import Path
 from scipy.stats import gaussian_kde
 
 
 def run_benchmark_measures(
     metrics_path,
     method="random",
-    scores_path = "scores/..",
-    runtime_path = "runtime_stats/..",
-    dataset_path = "datasets/Backdoor",
-    field = "variation",
+    scores_path="scores/..",
+    runtime_path="runtime_stats/..",
+    dataset_path="datasets/Backdoor",
+    field="variation",
 ):
     if method == "random":
         return None
 
     dataset = load_from_disk(dataset_path)
 
-    train_dataset = dataset['train']
-    validation_dataset = dataset['test']
+    train_dataset = dataset["train"]
+    validation_dataset = dataset["test"]
 
     influence = pd.read_csv(scores_path)
 
@@ -39,10 +38,14 @@ def run_benchmark_measures(
         with open(runtime_path, "r") as f:
             time_elapsed = float(f.read().strip())
 
-    
-    if influence.shape != (len(validation_dataset), len(train_dataset)):
+    expected_shape = (
+        len(validation_dataset),
+        len(train_dataset),
+    )
+
+    if influence.shape != expected_shape:
         raise ValueError(
-            f"Expected shape {(len(validation_dataset), len(train_dataset))}, "
+            f"Expected shape {expected_shape}, "
             f"got {influence.shape}"
         )
 
@@ -52,54 +55,68 @@ def run_benchmark_measures(
     train_class_counts = Counter(train_labels)
     n = len(validation_dataset)
 
-    overall = {"acc": 0, "cov": 0, "cov_den": 0, "sparsity5": 0}
+    overall = {
+        "acc": 0,
+        "map": 0,
+        "sparsity5": 0,
+    }
 
     for i in range(n):
         val_label = validation_labels[i]
         scores = influence.iloc[i].to_numpy()
 
-        # sparsity at 5% percentile
-        abs_scores = np.abs(scores)
-        total_sum = abs_scores.sum()
+        # Sparsity@5 using positive influence scores
+        positive_scores = np.maximum(scores, 0)
+        total_sum = positive_scores.sum()
+
         if total_sum > 0:
-            k5 = max(1, int(np.ceil(0.05 * len(abs_scores))))
-            top5_sum = np.partition(abs_scores, -k5)[-k5:].sum()
+            k5 = max(
+                1,
+                int(np.ceil(0.05 * len(positive_scores))),
+            )
+
+            top5_sum = np.partition(
+                positive_scores,
+                -k5,
+            )[-k5:].sum()
+
             overall["sparsity5"] += top5_sum / total_sum
-        ############
 
-        k = train_class_counts[val_label]
+        k = train_class_counts.get(val_label, 0)
 
-        indices = np.argpartition(scores, -k)[-k:]
-        topk = indices[np.argsort(scores[indices])[::-1]]
-        top1 = int(topk[0])
+        # Full ranking from highest to lowest
+        ranking = np.argsort(scores)[::-1]
+
+        # Accuracy
+        top1 = int(ranking[0])
 
         if train_labels[top1] == val_label:
             overall["acc"] += 1
 
-        cov_hits = sum(
-            train_labels[int(idx)] == val_label
-            for idx in topk
-        )
+        # Average Precision
+        if k > 0:
+            hits = 0
+            precision_sum = 0.0
 
-        overall["cov"] += cov_hits
-        overall["cov_den"] += k
+            for rank, idx in enumerate(ranking, start=1):
+                if train_labels[int(idx)] == val_label:
+                    hits += 1
+                    precision_sum += hits / rank
+
+            overall["map"] += precision_sum / k
 
     metrics = {
-        "overall": {
-            "variation": {
-                "accuracy": overall["acc"] / n,
-                "coverage": overall["cov"] / overall["cov_den"],
-                "sparsity@5": overall["sparsity5"] / n,
-            }
-        },
+        "accuracy": overall["acc"] / n,
+        "map": overall["map"] / n,
+        "sparsity@5": overall["sparsity5"] / n,
     }
 
     if time_elapsed is not None:
         metrics["time_elapsed"] = time_elapsed
 
-
-    print("Accuracy:", metrics["overall"][field]["accuracy"])
-    print("Coverage:", metrics["overall"][field]["coverage"])
+    print("Accuracy:", metrics["accuracy"])
+    print("MAP:", metrics["map"])
+    print("Sparsity@5:", metrics["sparsity@5"])
 
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
@@ -107,7 +124,13 @@ def run_benchmark_measures(
     return metrics
 
 
-def generate_table_metrics(source_dir="results/json", results_dir = "results", figsize_scale=0.55, show=True):
+
+def generate_table_metrics(
+    source_dir="results/json",
+    results_dir="results",
+    figsize_scale=0.55,
+    show=True,
+):
 
     if not os.path.exists(source_dir):
         raise FileNotFoundError(f"Directory not found: {source_dir}")
@@ -124,7 +147,7 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
         parts = stem.split("_")
 
         group = "_".join(parts[:2]) if len(parts) >= 2 else stem
-        
+
         if len(parts) >= 5:
             exp = "_".join(parts[2:-2])
         elif len(parts) >= 3:
@@ -135,27 +158,24 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
         with open(os.path.join(source_dir, file)) as f:
             grouped[group].append((exp, json.load(f)))
 
-    metric_labels = ["Accuracy", "Coverage", "Sparsity@5", "Runtime"]
+    metric_labels = ["Accuracy", "MAP", "Sparsity@5", "Runtime"]
     figures = {}
 
     for group_key, experiments in grouped.items():
 
         experiment_labels = [exp for exp, _ in experiments]
-
         col_names = ["Method"] + metric_labels
 
         values = np.full(
             (len(experiment_labels), len(metric_labels)),
-            np.nan
+            np.nan,
         )
 
         for exp_idx, (exp, metrics) in enumerate(experiments):
 
-            vals = metrics.get("overall", {}).get("variation", {})
-
-            values[exp_idx, 0] = vals.get("accuracy", np.nan)
-            values[exp_idx, 1] = vals.get("coverage", np.nan)
-            values[exp_idx, 2] = vals.get("sparsity@5", np.nan)
+            values[exp_idx, 0] = metrics.get("accuracy", np.nan)
+            values[exp_idx, 1] = metrics.get("map", np.nan)
+            values[exp_idx, 2] = metrics.get("sparsity@5", np.nan)
             values[exp_idx, 3] = metrics.get("time_elapsed", np.nan)
 
         cmap = cm.get_cmap("RdYlGn")
@@ -167,7 +187,9 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
             finite = values[:, c][np.isfinite(values[:, c])]
 
             if len(finite) and finite.min() != finite.max():
-                col_norms.append(Normalize(finite.min(), finite.max()))
+                col_norms.append(
+                    Normalize(finite.min(), finite.max())
+                )
             else:
                 col_norms.append(Normalize(0, 1))
 
@@ -183,7 +205,7 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
                         else cmap(col_norms[c](v))
                     )
                     for c, v in enumerate(row)
-                ]
+                ],
             ]
             for row in values
         ]
@@ -198,7 +220,7 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
                     if c == 3
                     else f"{v * 100:.2f}%"
                     for c, v in enumerate(row)
-                ]
+                ],
             ]
             for exp_label, row in zip(experiment_labels, values)
         ]
@@ -206,7 +228,10 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
         fig, ax = plt.subplots(
             figsize=(
                 max(10, len(col_names) * 2),
-                max(4, len(experiment_labels) * figsize_scale + 2),
+                max(
+                    4,
+                    len(experiment_labels) * figsize_scale + 2,
+                ),
             )
         )
 
@@ -236,13 +261,13 @@ def generate_table_metrics(source_dir="results/json", results_dir = "results", f
 
         output_path = os.path.join(
             results_dir,
-            f"{group_key}_metrics_table.png"
+            f"{group_key}_metrics_table.png",
         )
 
         fig.savefig(
             output_path,
             bbox_inches="tight",
-            dpi=300
+            dpi=300,
         )
 
         figures[group_key] = fig
