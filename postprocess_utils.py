@@ -29,7 +29,7 @@ def run_benchmark_measures(
     dataset = load_from_disk(dataset_path)
 
     train_dataset = dataset["train"]
-    validation_dataset = dataset["test"]
+    test_dataset = dataset["test"]
 
     influence = pd.read_csv(scores_path)
 
@@ -39,7 +39,7 @@ def run_benchmark_measures(
             time_elapsed = float(f.read().strip())
 
     expected_shape = (
-        len(validation_dataset),
+        len(test_dataset),
         len(train_dataset),
     )
 
@@ -50,10 +50,10 @@ def run_benchmark_measures(
         )
 
     train_labels = list(train_dataset[field])
-    validation_labels = list(validation_dataset[field])
+    test_labels = list(test_dataset[field])
 
     train_class_counts = Counter(train_labels)
-    n = len(validation_dataset)
+    M = len(test_dataset)
 
     overall = {
         "acc": 0,
@@ -61,8 +61,8 @@ def run_benchmark_measures(
         "sparsity5": 0,
     }
 
-    for i in range(n):
-        val_label = validation_labels[i]
+    for i in range(M):
+        test_label = test_labels[i]
         scores = influence.iloc[i].to_numpy()
 
         # Sparsity@5 using positive influence scores
@@ -70,19 +70,11 @@ def run_benchmark_measures(
         total_sum = positive_scores.sum()
 
         if total_sum > 0:
-            k5 = max(
-                1,
-                int(np.ceil(0.05 * len(positive_scores))),
-            )
+            threshold = np.percentile(positive_scores, 95)
+            top_sum = positive_scores[positive_scores >= threshold].sum()
+            overall["sparsity5"] += top_sum / total_sum
 
-            top5_sum = np.partition(
-                positive_scores,
-                -k5,
-            )[-k5:].sum()
-
-            overall["sparsity5"] += top5_sum / total_sum
-
-        k = train_class_counts.get(val_label, 0)
+        k = train_class_counts.get(test_label, 0)
 
         # Full ranking from highest to lowest
         ranking = np.argsort(scores)[::-1]
@@ -90,7 +82,7 @@ def run_benchmark_measures(
         # Accuracy
         top1 = int(ranking[0])
 
-        if train_labels[top1] == val_label:
+        if train_labels[top1] == test_label:
             overall["acc"] += 1
 
         # Average Precision
@@ -99,16 +91,16 @@ def run_benchmark_measures(
             precision_sum = 0.0
 
             for rank, idx in enumerate(ranking, start=1):
-                if train_labels[int(idx)] == val_label:
+                if train_labels[int(idx)] == test_label:
                     hits += 1
                     precision_sum += hits / rank
 
             overall["map"] += precision_sum / k
 
     metrics = {
-        "accuracy": overall["acc"] / n,
-        "map": overall["map"] / n,
-        "sparsity@5": overall["sparsity5"] / n,
+        "accuracy": overall["acc"] / M,
+        "map": overall["map"] / M,
+        "sparsity@5": overall["sparsity5"] / M,
     }
 
     if time_elapsed is not None:
@@ -354,6 +346,12 @@ def generate_combined_plots(
     ax_cov.grid(True)
 
     handles, labels = ax_kde.get_legend_handles_labels()
+
+    if not handles:
+        print(f"No plots generated for {name_begin} ({model_n}); skipping.")
+        plt.close(fig)
+        return None
+
     fig.legend(
         handles,
         labels,
