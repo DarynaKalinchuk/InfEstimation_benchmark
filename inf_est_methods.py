@@ -214,6 +214,16 @@ def TracIn(
         device=device,
     )
 
+    val_norm_sq = torch.zeros(
+        len(val_ids),
+        device=device,
+    )
+
+    train_norm_sq = torch.zeros(
+        len(train_ids),
+        device=device,
+    )
+
     for weight_name in tqdm(param_order):
         st = adamw_state[weight_name]
 
@@ -251,10 +261,13 @@ def TracIn(
         updated_v_hat = updated_v / (1 - beta2 ** (step + 1))
 
         adam_preconditioned_train = (
-            lr * updated_m_hat / (torch.sqrt(updated_v_hat) + eps)
+            updated_m_hat / (torch.sqrt(updated_v_hat) + eps)
         )
 
         scores += Gv @ adam_preconditioned_train.T
+
+        val_norm_sq += Gv.pow(2).sum(dim=1)
+        train_norm_sq += adam_preconditioned_train.pow(2).sum(dim=1)
 
         del (
             Gt,
@@ -267,6 +280,13 @@ def TracIn(
             m,
             v,
         )
+
+    scores /= (
+        val_norm_sq.sqrt().unsqueeze(1)
+        * train_norm_sq.sqrt().unsqueeze(0)
+    ).clamp_min(1e-12)
+
+    scores *= lr
 
     df = pd.DataFrame(
         scores.detach().cpu().numpy(),
