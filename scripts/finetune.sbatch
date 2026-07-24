@@ -11,33 +11,24 @@
 
 python3 --version
 
-IFS=',' read -r MODEL_NAME MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA LOAD_8BIT < settings_txt/finetune_params.txt
+IFS=',' read -r MODEL_NAME MAX_LENGTH BATCH_SIZE EPOCHS LORA_R LORA_ALPHA < settings_txt/finetune_params.txt
 
-
-LOAD8BIT_ARG=""
-if [ "$LOAD_8BIT" == "True" ]; then
-    LOAD8BIT_ARG="--load_in_8bit"
-fi
 
 echo "MODEL_NAME = $MODEL_NAME"
 echo "MAX_LENGTH = $MAX_LENGTH"
 echo "BATCH_SIZE = $BATCH_SIZE"
-echo "LOGGING_STEP = $LOGGING_STEP"
 echo "EPOCHS = $EPOCHS"
 echo "LORA_R = $LORA_R"
 echo "LORA_ALPHA = $LORA_ALPHA"
-echo "LOAD_8BIT = $LOAD_8BIT"
 
 while read -r DATASET_NAME; do
     echo "DATASET_NAME = $DATASET_NAME"
 
     python3 finetune.py \
         --model $MODEL_NAME \
-        $LOAD8BIT_ARG \
         --dataset $DATASET_NAME \
         --max_length $MAX_LENGTH \
         --batch_size $BATCH_SIZE \
-        --logging_step $LOGGING_STEP \
         --epochs $EPOCHS \
         --lora_r $LORA_R \
         --lora_alpha $LORA_ALPHA

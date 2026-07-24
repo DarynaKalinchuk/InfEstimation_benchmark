@@ -54,11 +54,7 @@ def get_preprocessed_dataset(tokenizer, dataset, max_length):
             max_length=max_length,
         )
 
-        labels = [
-            [-100 if token == tokenizer.pad_token_id else token for token in ids]
-            for ids in tokenized["input_ids"]
-        ]
-        tokenized["labels"] = labels
+        tokenized["labels"] = [ids.copy() for ids in tokenized["input_ids"]]
         return tokenized
 
     return dataset.map(
@@ -86,7 +82,8 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
     tr_grad_dict = {}
     for step, batch in enumerate(tqdm(train_dataloader_stochastic)):
         model.zero_grad()
-        batch = {k: v.to("cuda") for k, v in batch.items()}
+        batch['labels'] = batch['input_ids']
+        batch.to('cuda')
         outputs = model(**batch)
         loss = outputs.loss
         loss.backward()
@@ -97,8 +94,6 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
                 grad_dict[k] = v.grad.cpu()
             elif 'lora_B' in k:
                 grad_dict[k] = v.grad.cpu().T
-            elif 'modules_to_save.default.out_proj.weight' in k:
-                grad_dict[k] = v.grad.cpu()
             else: pass
         tr_grad_dict[step] = grad_dict
         del grad_dict
@@ -106,8 +101,8 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
     val_grad_dict = {}
     for step, batch in enumerate(tqdm(val_dataloader_stochastic)):
         model.zero_grad()
-        device = next(model.parameters()).device
-        batch = {k: v.to(device) for k, v in batch.items()}
+        batch['labels'] = batch['input_ids']
+        batch.to('cuda')
         outputs = model(**batch)
         loss = outputs.loss
         loss.backward()
@@ -118,8 +113,6 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
                 grad_dict[k] = v.grad.cpu()
             elif 'lora_B' in k:
                 grad_dict[k] = v.grad.cpu().T
-            elif 'modules_to_save.default.out_proj.weight' in k:
-                grad_dict[k] = v.grad.cpu()
             else: pass
         val_grad_dict[step] = grad_dict    
         del grad_dict
@@ -263,11 +256,7 @@ class KronfluenceTask(Task):
         self.autoregressive = autoregressive
         self.device = device
         self.model = model
-        self.target_modules = target_modules or [
-            "q_proj",
-            "v_proj",
-            "modules_to_save.default.out_proj",
-        ]
+        self.target_modules = target_modules
 
     def compute_train_loss(
         self,

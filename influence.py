@@ -45,14 +45,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-
-    with open("settings_txt/target_modules.txt") as f:
-        target_modules = [
-            line.strip()
-            for line in f
-            if line.strip()
-        ]
-
     
     model_name = get_model_name(args.model)
 
@@ -113,8 +105,7 @@ if __name__ == '__main__':
                                             tokenized_tr,
                                             tokenized_val,
                                             output_dir="results/EKFAC",
-                                            factor_strategy = "ekfac",
-                                            target_modules = target_modules)
+                                            factor_strategy = "ekfac")
 
         influence_inf = pd.DataFrame(scores.detach().float().cpu().numpy())
 
@@ -122,16 +113,16 @@ if __name__ == '__main__':
 
     elif args.inf_method ==  "TracIn":
 
+        if "random" in args.model:
+            print("TracIn disabled for randomized models.")
+            sys.exit()
+            
         tokenized_tr = get_preprocessed_dataset(
             tokenizer, dataset["train"], max_length=args.max_length
         )
         tokenized_val = get_preprocessed_dataset(
             tokenizer, dataset["test"], max_length=args.max_length
         )
-
-        if "random" in args.model:
-            print("TracIn disabled for randomized models.")
-            sys.exit()
 
         print(f"Calculating {args.inf_method}...")
 

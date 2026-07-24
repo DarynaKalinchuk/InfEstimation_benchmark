@@ -11,7 +11,7 @@
 
 python3 --version
 
-IFS=',' read -r MODEL_NAME MAX_LENGTH BATCH_SIZE LOGGING_STEP EPOCHS LORA_R LORA_ALPHA LOAD_8BIT < settings_txt/finetune_params.txt
+IFS=',' read -r MODEL_NAME MAX_LENGTH BATCH_SIZE EPOCHS LORA_R LORA_ALPHA < settings_txt/finetune_params.txt
 
 echo "MODEL_NAME = $MODEL_NAME"
 echo "MAX_LENGTH = $MAX_LENGTH"

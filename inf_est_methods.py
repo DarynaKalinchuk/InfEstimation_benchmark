@@ -314,7 +314,7 @@ def DataInf(
     if hyperparams is None:
         hyperparams = {}
 
-    lambda_const_param = float(hyperparams.get("lambda_const_param", 10))
+    lambda_const_param = float(hyperparams.get("lambda_const_param", 0.1))
 
     print("Calculating influence with DataInf.")
     print(f"Params: lambda_const_param={lambda_const_param}")
@@ -348,7 +348,7 @@ def DataInf(
             for val_id in val_ids
         ]).to(device)
 
-        lambda_const = Gt.pow(2).mean(dim=1).mean() / lambda_const_param
+        lambda_const = lambda_const_param * Gt.pow(2).mean(dim=1).mean()
 
         denom = lambda_const + Gt.pow(2).sum(dim=1)
 
@@ -388,7 +388,7 @@ def LiSSA(
     if hyperparams is None:
         hyperparams = {}
 
-    lambda_const_param = float(hyperparams.get("lambda_const_param", 10))
+    lambda_const_param = float(hyperparams.get("lambda_const_param", 0.1))
     n_iteration = int(hyperparams.get("n_iteration", 10))
     alpha_const = float(hyperparams.get("alpha_const", 1.0))
 
@@ -428,7 +428,7 @@ def LiSSA(
             for val_id in val_ids
         ]).to(device)
 
-        lambda_const = Gt.pow(2).mean(dim=1).mean() / lambda_const_param
+        lambda_const = lambda_const_param * Gt.pow(2).mean(dim=1).mean()
 
         running_hvp = Gv.clone()
 
@@ -471,7 +471,7 @@ def theta_RelatIF(
     if hyperparams is None:
         hyperparams = {}
 
-    lambda_const_param = float(hyperparams.get("lambda_const_param", 10))
+    lambda_const_param = float(hyperparams.get("lambda_const_param", 0.1))
 
     print("Calculating influence with theta-RelatIF.")
     print(f"Params: lambda_const_param={lambda_const_param}")
@@ -510,7 +510,7 @@ def theta_RelatIF(
             for val_id in val_ids
         ]).to(device)
 
-        lambda_const = Gt.pow(2).mean(dim=1).mean() / lambda_const_param
+        lambda_const = lambda_const_param * Gt.pow(2).mean(dim=1).mean()
 
         denom = lambda_const + Gt.pow(2).sum(dim=1)
 
@@ -558,7 +558,7 @@ def l_RelatIF(
     if hyperparams is None:
         hyperparams = {}
 
-    lambda_const_param = float(hyperparams.get("lambda_const_param", 10))
+    lambda_const_param = float(hyperparams.get("lambda_const_param", 0.1))
 
     print("Calculating influence with l-RelatIF.")
     print(f"Params: lambda_const_param={lambda_const_param}")
@@ -597,7 +597,7 @@ def l_RelatIF(
             for val_id in val_ids
         ]).to(device)
 
-        lambda_const = Gt.pow(2).mean(dim=1).mean() / lambda_const_param
+        lambda_const = lambda_const_param * Gt.pow(2).mean(dim=1).mean()
 
         denom = lambda_const + Gt.pow(2).sum(dim=1)
 
@@ -683,7 +683,7 @@ def ekfac_influence_estimation(
                 batch_size=10,
                 output_dir="results/EKFAC",
                 factor_strategy="ekfac",
-                target_modules=None,
+                target_modules = ["q_proj", "v_proj"],
             ):
 
     autoregressive = True
@@ -716,9 +716,10 @@ def ekfac_influence_estimation(
                          initial_per_device_batch_size_attempt=batch_size,)
 
 
-    # Configure parameters for DataLoader.
-    score_args = all_low_precision_score_arguments(dtype=torch.bfloat16)
-
+    score_args = all_low_precision_score_arguments(
+        dtype=torch.bfloat16,
+        damping_factor=None,
+    )
 
 
     analyzer.compute_pairwise_scores(
@@ -738,4 +739,3 @@ def ekfac_influence_estimation(
     print(f"Saved to: {output_dir}")
 
     return scores
-

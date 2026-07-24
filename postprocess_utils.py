@@ -123,137 +123,192 @@ def generate_table_metrics(
     figsize_scale=0.55,
     show=True,
 ):
-
     if not os.path.exists(source_dir):
         raise FileNotFoundError(f"Directory not found: {source_dir}")
 
     files = sorted(
-        f for f in os.listdir(source_dir)
-        if f.endswith(".json")
+        filename
+        for filename in os.listdir(source_dir)
+        if filename.endswith(".json")
     )
 
-    grouped = defaultdict(list)
+    # Structure:
+    # grouped[dataset][model] = [(experiment, metrics), ...]
+    grouped = defaultdict(lambda: defaultdict(list))
 
-    for file in files:
-        stem = file.removesuffix(".json")
+    for filename in files:
+        stem = filename.removesuffix(".json")
         parts = stem.split("_")
 
-        group = "_".join(parts[:2]) if len(parts) >= 2 else stem
+        if len(parts) < 2:
+            raise ValueError(
+                f"Expected filename starting with model_dataset: {filename}"
+            )
+
+        dataset = parts[0]
+        model = parts[1]
 
         if len(parts) >= 5:
-            exp = "_".join(parts[2:-2])
+            experiment = "_".join(parts[2:-2])
         elif len(parts) >= 3:
-            exp = "_".join(parts[2:])
+            experiment = "_".join(parts[2:])
         else:
-            exp = stem
+            experiment = stem
 
-        with open(os.path.join(source_dir, file)) as f:
-            grouped[group].append((exp, json.load(f)))
+        filepath = os.path.join(source_dir, filename)
+
+        with open(filepath, encoding="utf-8") as file:
+            metrics = json.load(file)
+
+        grouped[dataset][model].append((experiment, metrics))
 
     metric_labels = ["Accuracy", "MAP", "Sparsity@5", "Runtime"]
+    col_names = ["Method"] + metric_labels
+
+    cmap = cm.get_cmap("RdYlGn")
+    reverse_cmap = cm.get_cmap("RdYlGn_r")
+
     figures = {}
 
-    for group_key, experiments in grouped.items():
+    for dataset, model_experiments in grouped.items():
+        models = sorted(model_experiments)
 
-        experiment_labels = [exp for exp, _ in experiments]
-        col_names = ["Method"] + metric_labels
-
-        values = np.full(
-            (len(experiment_labels), len(metric_labels)),
-            np.nan,
-        )
-
-        for exp_idx, (exp, metrics) in enumerate(experiments):
-
-            values[exp_idx, 0] = metrics.get("accuracy", np.nan)
-            values[exp_idx, 1] = metrics.get("map", np.nan)
-            values[exp_idx, 2] = metrics.get("sparsity@5", np.nan)
-            values[exp_idx, 3] = metrics.get("time_elapsed", np.nan)
-
-        cmap = cm.get_cmap("RdYlGn")
-        reverse_cmap = cm.get_cmap("RdYlGn_r")
-
-        col_norms = []
-
-        for c in range(values.shape[1]):
-            finite = values[:, c][np.isfinite(values[:, c])]
-
-            if len(finite) and finite.min() != finite.max():
-                col_norms.append(
-                    Normalize(finite.min(), finite.max())
-                )
-            else:
-                col_norms.append(Normalize(0, 1))
-
-        cell_colours = [
-            [
-                (1, 1, 1, 1),
-                *[
-                    (1, 1, 1, 1)
-                    if np.isnan(v)
-                    else (
-                        reverse_cmap(col_norms[c](v))
-                        if c == 3
-                        else cmap(col_norms[c](v))
-                    )
-                    for c, v in enumerate(row)
-                ],
-            ]
-            for row in values
-        ]
-
-        table_text = [
-            [
-                exp_label,
-                *[
-                    ""
-                    if np.isnan(v)
-                    else f"{v:.2f}s"
-                    if c == 3
-                    else f"{v * 100:.2f}%"
-                    for c, v in enumerate(row)
-                ],
-            ]
-            for exp_label, row in zip(experiment_labels, values)
-        ]
-
-        fig, ax = plt.subplots(
-            figsize=(
-                max(10, len(col_names) * 2),
-                max(
-                    4,
-                    len(experiment_labels) * figsize_scale + 2,
-                ),
+        if len(models) > 4:
+            raise ValueError(
+                f"Dataset {dataset!r} has {len(models)} models; "
+                "a maximum of four is supported."
             )
+
+        # 1 model: 1x1
+        # 2 models: 1x2
+        # 3-4 models: 2x2
+        if len(models) == 1:
+            nrows, ncols = 1, 1
+        elif len(models) == 2:
+            nrows, ncols = 1, 2
+        else:
+            nrows, ncols = 2, 2
+
+        max_experiments = max(
+            len(experiments)
+            for experiments in model_experiments.values()
         )
 
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=table_text,
-            cellColours=cell_colours,
-            colLabels=col_names,
-            cellLoc="center",
-            loc="center",
+        fig, axes = plt.subplots(
+            nrows=nrows,
+            ncols=ncols,
+            figsize=(
+                8 * ncols,
+                max(4, max_experiments * figsize_scale + 2) * nrows,
+            ),
+            squeeze=False,
         )
 
-        table.auto_set_font_size(False)
-        table.set_fontsize(8)
-        table.scale(1, 1.35)
+        flat_axes = axes.ravel()
 
-        ax.set_title(
-            group_key.replace("_", " "),
-            fontsize=14,
-            pad=20,
+        for ax, model in zip(flat_axes, models):
+            experiments = model_experiments[model]
+            experiment_labels = [exp for exp, _ in experiments]
+
+            values = np.full(
+                (len(experiments), len(metric_labels)),
+                np.nan,
+            )
+
+            for exp_idx, (_, metrics) in enumerate(experiments):
+                values[exp_idx, 0] = metrics.get("accuracy", np.nan)
+                values[exp_idx, 1] = metrics.get("map", np.nan)
+                values[exp_idx, 2] = metrics.get("sparsity@5", np.nan)
+                values[exp_idx, 3] = metrics.get("time_elapsed", np.nan)
+
+            col_norms = []
+
+            for column_index in range(values.shape[1]):
+                finite = values[:, column_index][
+                    np.isfinite(values[:, column_index])
+                ]
+
+                if len(finite) and finite.min() != finite.max():
+                    norm = Normalize(finite.min(), finite.max())
+                else:
+                    norm = Normalize(0, 1)
+
+                col_norms.append(norm)
+
+            cell_colours = [
+                [
+                    (1, 1, 1, 1),
+                    *[
+                        (1, 1, 1, 1)
+                        if np.isnan(value)
+                        else (
+                            reverse_cmap(col_norms[column_index](value))
+                            if column_index == 3
+                            else cmap(col_norms[column_index](value))
+                        )
+                        for column_index, value in enumerate(row)
+                    ],
+                ]
+                for row in values
+            ]
+
+            table_text = [
+                [
+                    experiment_label,
+                    *[
+                        ""
+                        if np.isnan(value)
+                        else (
+                            f"{value:.2f}s"
+                            if column_index == 3
+                            else f"{value * 100:.2f}%"
+                        )
+                        for column_index, value in enumerate(row)
+                    ],
+                ]
+                for experiment_label, row in zip(
+                    experiment_labels,
+                    values,
+                )
+            ]
+
+            ax.axis("off")
+
+            table = ax.table(
+                cellText=table_text,
+                cellColours=cell_colours,
+                colLabels=col_names,
+                cellLoc="center",
+                loc="center",
+            )
+
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1, 1.35)
+
+            ax.set_title(
+                model.replace("_", " "),
+                fontsize=12,
+                pad=15,
+            )
+
+        # Hide unused subplot in a three-model 2x2 layout.
+        for ax in flat_axes[len(models):]:
+            ax.axis("off")
+
+        fig.suptitle(
+            dataset.replace("_", " "),
+            fontsize=16,
+            y=0.99,
         )
 
-        plt.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.96))
 
         os.makedirs(results_dir, exist_ok=True)
 
         output_path = os.path.join(
             results_dir,
-            f"{group_key}_metrics_table.png",
+            f"{dataset}_metrics_tables.png",
         )
 
         fig.savefig(
@@ -262,7 +317,7 @@ def generate_table_metrics(
             dpi=300,
         )
 
-        figures[group_key] = fig
+        figures[dataset] = fig
 
         if show:
             plt.show()
@@ -270,7 +325,6 @@ def generate_table_metrics(
             plt.close(fig)
 
     return figures
-
 
 
 def generate_combined_plots(
@@ -285,10 +339,7 @@ def generate_combined_plots(
 
     files = sorted(cache_dir.glob(name_begin + "*.csv"))
 
-    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
-    ax_kde, ax_cov = axs
-
-    percentiles = np.array([0.01, 0.1, 0.2, 0.3, 0.4, 0.5])
+    fig, ax_kde = plt.subplots(figsize=(7, 5))
 
     for file in files:
         method = file.stem.replace(name_begin, "")
@@ -312,38 +363,9 @@ def generate_combined_plots(
             x = np.linspace(values.min(), values.max(), 1000)
             ax_kde.plot(x, kde(x), lw=2, label=method)
 
-
-            avg_coverage = []
-
-            for p in percentiles:
-                row_coverages = []
-
-                for row in X:
-                    row_sorted = np.sort(row)[::-1]
-
-                    total = row[row > 0].sum()
-                    if total == 0:
-                        continue
-
-                    k = max(1, int(np.ceil(p * len(row_sorted))))
-                    coverage = row_sorted[:k].clip(min=0).sum() / total
-                    row_coverages.append(coverage)
-
-                avg_coverage.append(
-                    np.mean(row_coverages) if row_coverages else np.nan
-                )
-
-            ax_cov.plot(percentiles, avg_coverage, marker="o", lw=2, label=method)
-
     ax_kde.set_xlabel("Value / Std")
     ax_kde.set_ylabel("Density")
     ax_kde.set_title(f"{name_begin.split('_',1)[0]} {model_n} KDE Comparison")
-
-    ax_cov.set_xlabel("Top percentile")
-    ax_cov.set_ylabel("Average coverage of positive values")
-    ax_cov.set_title(f"{name_begin.split('_',1)[0]} {model_n} Coverage Comparison")
-    ax_cov.yaxis.set_major_formatter(PercentFormatter(1.0))
-    ax_cov.grid(True)
 
     handles, labels = ax_kde.get_legend_handles_labels()
 
