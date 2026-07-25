@@ -5,7 +5,8 @@ from tqdm import tqdm
 from collections import defaultdict
 from utils import *
 import json
-from rank_bm25 import BM25Plus
+from rank_bm25 import BM25Okapi
+
 
 
 def random_influence_estimation(dataset, metrics_path):
@@ -663,7 +664,7 @@ def BM25_scores(dataset):
     tokenized_train = [x.lower().split(" ") for x in train_texts]
     tokenized_test = [x.lower().split(" ") for x in test_texts]
 
-    bm25 = BM25Plus(tokenized_train)
+    bm25 = BM25Okapi(tokenized_train)
 
     scores = []
     for q in tqdm(tokenized_test):

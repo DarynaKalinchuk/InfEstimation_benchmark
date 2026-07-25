@@ -80,6 +80,24 @@ if __name__ == '__main__':
         os.environ.pop(var, None)
 
 
+    if "random" in args.model:
+
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=0.1,
+            target_modules=["q_proj", "v_proj"],
+            task_type="CAUSAL_LM",
+            init_lora_weights=False, #this does random init for lora A and B matrices (non-zero)
+        )
+
+        model = get_peft_model(model, lora_config)
+
+        model.save_pretrained(save_path)
+        print(f"Model saved to: {save_path}")
+        sys.exit()
+
+
     lora_config = LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
@@ -88,17 +106,9 @@ if __name__ == '__main__':
         task_type="CAUSAL_LM"
     )
 
-
-
     model = get_peft_model(model, lora_config)
 
     print_lora_coverage(model)
-
-    if "random" in args.model:
-        model.save_pretrained(save_path)
-        print(f"Model saved to: {save_path}")
-        sys.exit()
-
 
     training_args = TrainingArguments(
         output_dir=save_path,
@@ -106,7 +116,7 @@ if __name__ == '__main__':
         num_train_epochs=args.epochs,
         logging_steps=10,
         save_strategy="epoch",
-        save_total_limit=10, # number of checkpoints
+        save_total_limit=10, # max number of checkpoints
         remove_unused_columns=False,
         learning_rate = 5e-5,
         # eval_steps=125,

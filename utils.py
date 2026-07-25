@@ -129,29 +129,16 @@ def get_model_name(model_n):
 
         model_name = "Qwen/Qwen2.5-3B-Instruct"
        
-    
-    elif model_n == "QWEN4":
-
-        model_name = "Qwen/Qwen3-4B-Instruct"
-        
-
 
     elif model_n == "Olmo":
 
         model_name = "allenai/OLMo-2-0425-1B-SFT"
         
 
-
     elif model_n == "randomLlama3":
 
         model_name = "meta-llama/Llama-3.2-3B-Instruct"
         
-
-    elif model_n == "Olmo7":
-
-        model_name = "allenai/OLMo-2-1124-7B-Instruct"
-        
-
 
     else:
         raise ValueError(f"Chat template not defined in utils for model: {model_n}")

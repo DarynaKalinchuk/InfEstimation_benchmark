@@ -48,6 +48,11 @@ while read -r DATASET_NAME; do
         echo "DATASET_NAME = $DATASET_NAME"
         echo "INF_METHOD = $INF_METHOD"
 
+        if [[ "${MODEL_NAME,,}" == *"random"* && "$INF_METHOD" == "TracIn" ]]; then
+            echo "TracIn disabled for randomized models."
+            continue
+        fi
+
         METRICS_PATH="results/json/${DATASET_NAME}_${MODEL_NAME}_${INF_METHOD}_metrics_results.json"
         SCORES_PATH="scores/${MODEL_NAME}/${DATASET_NAME}_${EPOCHS}${INF_METHOD}.csv"
         RUNTIME_PATH="runtime_stats/${MODEL_NAME}/${DATASET_NAME}_${EPOCHS}${INF_METHOD}.txt"
