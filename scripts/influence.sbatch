@@ -53,7 +53,7 @@ while read -r DATASET_NAME; do
 
     done < settings_txt/methods_to_run.txt
 
-    python3 -c "from postprocess_utils import generate_combined_plots; generate_combined_plots(name_begin='${DATASET_NAME}_${EPOCHS}', results_dir='results/distr_plots', model_n='${MODEL_NAME}')"
+    python3 -c "from postprocess_utils import generate_combined_plots; generate_combined_plots(name_begin='${DATASET_NAME}_${EPOCHS}', results_dir='results/distr_plots')"
 
 done < settings_txt/dataset_settings.txt
 
