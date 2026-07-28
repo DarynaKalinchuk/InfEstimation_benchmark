@@ -3,6 +3,9 @@
 # for dist in distributions():
 #     print(f"{dist.metadata['Name']}=={dist.version}")
 
+import os
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
 from datasets import load_from_disk
 from transformers import AutoTokenizer
 import time
@@ -15,7 +18,6 @@ from tqdm.auto import tqdm
 import random
 import pickle
 import argparse
-import os
 import sys
 import glob
 from huggingface_hub import login
@@ -25,8 +27,11 @@ seed = 1
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.use_deterministic_algorithms(True)
 
 with open("settings_txt/TOKENS.txt", "r") as f:
     line = f.read().strip()
@@ -44,6 +49,13 @@ if __name__ == '__main__':
     parser.add_argument('--runtime_path', type=str, required=True, help='Runtime stats path.')
 
     args = parser.parse_args()
+
+    target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+        ]
 
     
     model_name = get_model_name(args.model)
@@ -105,7 +117,8 @@ if __name__ == '__main__':
                                             tokenized_tr,
                                             tokenized_val,
                                             output_dir="results/EKFAC",
-                                            factor_strategy = "ekfac")
+                                            factor_strategy = "ekfac",
+                                            target_modules=target_modules)
 
         influence_inf = pd.DataFrame(scores.detach().float().cpu().numpy())
 

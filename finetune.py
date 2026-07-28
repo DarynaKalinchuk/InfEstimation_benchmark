@@ -1,10 +1,11 @@
+import os
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 from datasets import load_from_disk
 from peft import LoraConfig, get_peft_model
 from utils import *
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig, EarlyStoppingCallback
 import argparse
 import warnings
-import os
 import torch
 import random
 import numpy as np
@@ -18,12 +19,11 @@ print(f"Setting random seed: {seed}")
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-
+torch.use_deterministic_algorithms(True)
 
 with open("settings_txt/TOKENS.txt", "r") as f:
     line = f.read().strip()
@@ -43,8 +43,50 @@ if __name__ == '__main__':
     
     os.environ["TENSORBOARD_LOGGING_DIR"] = "./logs"
 
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+    ]
     
     model_name = get_model_name(args.model)
+
+
+    model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=None,
+            device_map='auto'
+    )
+    model.config.use_cache = False
+
+    print(f"Model {model_name} loaded successfully.")
+
+    save_path = f"lora_adapter/{args.model}/{args.dataset}_{args.epochs}"
+    # Deleting files in that dir if exist, not to accidentally take old checkpoint results			
+    if os.path.isdir(save_path):			
+        shutil.rmtree(save_path)
+
+    for var in ["RANK", "LOCAL_RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"]:
+        os.environ.pop(var, None)
+
+
+    if "random" in args.model:
+
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=0.1,
+            target_modules=target_modules,
+            task_type="CAUSAL_LM",
+            init_lora_weights=False, #this does random init for lora A and B matrices (non-zero)
+        )
+
+        model = get_peft_model(model, lora_config)
+
+        model.save_pretrained(save_path)
+        print(f"Model saved to: {save_path}")
+        sys.exit()
 
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -57,52 +99,16 @@ if __name__ == '__main__':
     
     dataset = load_from_disk("datasets/" + args.dataset)
     train_dataset = get_preprocessed_dataset(tokenizer, dataset['train'], max_length=args.max_length)  
-    # eval_dataset = get_preprocessed_dataset(tokenizer, dataset['test'], max_length=args.max_length)
+    eval_dataset = get_preprocessed_dataset(tokenizer, dataset['test'], max_length=args.max_length)
     print(f"Training {args.model} for {args.epochs} epochs with batch size {args.batch_size}")
 
-
-    save_path = f"lora_adapter/{args.model}/{args.dataset}_{args.epochs}"
-    # Deleting files in that dir if exist, not to accidentally take old checkpoint results			
-    if os.path.isdir(save_path):			
-        shutil.rmtree(save_path)
-
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        quantization_config=None,
-        device_map='auto'
-    )
-    model.config.use_cache = False
-
-    print(f"Model {model_name} loaded successfully.")
-
-    for var in ["RANK", "LOCAL_RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"]:
-        os.environ.pop(var, None)
-
-
-    if "random" in args.model:
-
-        lora_config = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=0.1,
-            target_modules=["q_proj", "v_proj"],
-            task_type="CAUSAL_LM",
-            init_lora_weights=False, #this does random init for lora A and B matrices (non-zero)
-        )
-
-        model = get_peft_model(model, lora_config)
-
-        model.save_pretrained(save_path)
-        print(f"Model saved to: {save_path}")
-        sys.exit()
-
+ 
 
     lora_config = LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
         lora_dropout=0.1,
-        target_modules = ["q_proj", "v_proj"],
+        target_modules=target_modules,
         task_type="CAUSAL_LM"
     )
 
@@ -115,23 +121,24 @@ if __name__ == '__main__':
         per_device_train_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
         logging_steps=10,
+        eval_strategy="epoch",
         save_strategy="epoch",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         save_total_limit=10, # max number of checkpoints
         remove_unused_columns=False,
         learning_rate = 5e-5,
-        # eval_steps=125,
-        # eval_strategy="steps", 
-        # load_best_model_at_end=True,
-        # metric_for_best_model="eval_loss",
-        # greater_is_better=False,
+        seed=seed,
+        data_seed=seed,
     )
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        # eval_dataset=eval_dataset,
-        # callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+        eval_dataset=eval_dataset,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
     )
     
     trainer.train()
