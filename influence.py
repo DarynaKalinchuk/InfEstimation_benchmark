@@ -4,15 +4,11 @@
 #     print(f"{dist.metadata['Name']}=={dist.version}")
 
 import os
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 from datasets import load_from_disk
 from transformers import AutoTokenizer
 import time
 
-from utils import *
-from postprocess_utils import *
-from inf_est_methods import *
 from tqdm.auto import tqdm
 
 import random
@@ -32,6 +28,10 @@ torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
+
+from utils import *
+from postprocess_utils import *
+from inf_est_methods import *
 
 with open("settings_txt/TOKENS.txt", "r") as f:
     line = f.read().strip()

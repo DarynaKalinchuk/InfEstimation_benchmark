@@ -121,29 +121,25 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
 
 
 def get_model_name(model_n):
-    if model_n == "Llama3":
+    if model_n == "Llama1":
+        return "meta-llama/Llama-3.2-1B-Instruct"
 
-        model_name = "meta-llama/Llama-3.2-3B-Instruct"
 
-    elif model_n == "QWEN3":
+    elif model_n == "Olmo1":
+        return "allenai/OLMo-2-0425-1B-SFT"
 
-        model_name = "Qwen/Qwen2.5-3B-Instruct"
-       
 
-    elif model_n == "Olmo":
-
-        model_name = "allenai/OLMo-2-0425-1B-SFT"
+    elif model_n == "QWEN1.5":
+        return "Qwen/Qwen2.5-1.5B-Instruct"
         
 
-    elif model_n == "randomLlama3":
-
-        model_name = "meta-llama/Llama-3.2-3B-Instruct"
+    elif model_n == "randomLlama1":
+        return "meta-llama/Llama-3.2-1B-Instruct"
         
 
     else:
         raise ValueError(f"Chat template not defined in utils for model: {model_n}")
 
-    return model_name
 
 
 

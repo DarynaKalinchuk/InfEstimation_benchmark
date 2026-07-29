@@ -1,8 +1,6 @@
 import os
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 from datasets import load_from_disk
 from peft import LoraConfig, get_peft_model
-from utils import *
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig, EarlyStoppingCallback
 import argparse
 import warnings
@@ -24,6 +22,8 @@ torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
+
+from utils import *
 
 with open("settings_txt/TOKENS.txt", "r") as f:
     line = f.read().strip()
@@ -131,6 +131,7 @@ if __name__ == '__main__':
         learning_rate = 5e-5,
         seed=seed,
         data_seed=seed,
+        full_determinism=True,
     )
 
     trainer = Trainer(
@@ -138,7 +139,7 @@ if __name__ == '__main__':
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
     
     trainer.train()

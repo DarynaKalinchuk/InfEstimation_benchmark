@@ -11,6 +11,9 @@
 
 set -e
 
+export PYTHONHASHSEED=1
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
+
 python3 --version
 
 IFS=',' read -r MODEL_NAME MAX_LENGTH BATCH_SIZE EPOCHS LORA_R LORA_ALPHA < settings_txt/finetune_params.txt
