@@ -1,6 +1,6 @@
 FROM pytorch/pytorch:2.9.0-cuda12.6-cudnn9-runtime
 
-WORKDIR /srv/home/users/kalinchukd23cs/InfEstimation_benchmark
+WORKDIR /srv/home/users/kalinchukd23cs/infl_b
 
 RUN pip install --no-cache-dir --upgrade pip
 
