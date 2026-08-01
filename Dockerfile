@@ -17,4 +17,4 @@ RUN pip install --no-cache-dir \
     
 CMD ["python3"]
 
-LABEL org.opencontainers.image.source="https://github.com/DarynaKalinchuk/InfEstimation_benchmark"
+LABEL org.opencontainers.image.source="https://github.com/DarynaKalinchuk/infl_b"
