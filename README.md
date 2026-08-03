@@ -11,7 +11,7 @@ This repository contains the code used for the experiments in my Master's thesis
 ├── scripts/                           # SLURM job scripts
 ├── finetune.py                        # Step 1: Model fine-tuning
 ├── influence.py                       # Step 2: Influence estimation and post-processing
-├── inf_est_methods.py                 # Implementations of influence estimation methods
+├── inf_est_methods.py                 # Implementations of influence estimation methods (one function per method)
 ├── postprocess_utils.py               # Utilities for post-processing and plotting
 └── utils.py                           # General utility functions
 ```
