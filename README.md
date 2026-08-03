@@ -1,6 +1,4 @@
  
-# Influence Estimation Benchmark
-
 This repository contains the code used for the experiments in my Master's thesis, *Benchmarking Training Data Attribution Methods for Large Language Models*, submitted to the University of Vienna.
 
 ## Repository structure
