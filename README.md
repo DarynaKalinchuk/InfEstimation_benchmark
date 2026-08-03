@@ -13,7 +13,7 @@ This repository contains the code used for the experiments in my Master's thesis
 ├── influence.py                       # Step 2: Influence estimation and post-processing
 ├── inf_est_methods.py                 # Implementations of influence estimation methods (one function per method)
 ├── postprocess_utils.py               # Utilities for post-processing and plotting
-└── utils.py                           # General utility functions
+└── utils.py                           # Utilities for preprocessing, gradient collection, model loading, and Kronfluence
 ```
 
 ## Requirements
