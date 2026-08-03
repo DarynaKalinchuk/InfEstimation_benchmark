@@ -275,22 +275,3 @@ class KronfluenceTask(Task):
         return None  # Attention mask not used.
 
 
-
-def print_lora_coverage(model):
-    total_params = 0
-    trainable_params = 0
-
-    for _, param in model.named_parameters():
-        n = param.numel()
-        total_params += n
-        if param.requires_grad:
-            trainable_params += n
-
-    pct = 100 * trainable_params / total_params
-
-    print(f"Trainable params: {trainable_params:,}")
-    print(f"Total params:     {total_params:,}")
-    print(f"Coverage:         {pct:.4f}%")
-
-    return trainable_params, total_params, pct
-    

@@ -114,8 +114,8 @@ if __name__ == '__main__':
 
     model = get_peft_model(model, lora_config)
 
-    print_lora_coverage(model)
-
+    model.print_trainable_parameters()
+    
     training_args = TrainingArguments(
         output_dir=save_path,
         per_device_train_batch_size=args.batch_size,

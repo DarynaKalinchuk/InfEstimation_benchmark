@@ -4,7 +4,7 @@
 #     print(f"{dist.metadata['Name']}=={dist.version}")
 
 import os
-
+import torch
 from datasets import load_from_disk
 from transformers import AutoTokenizer
 import time
@@ -17,7 +17,7 @@ import argparse
 import sys
 import glob
 from huggingface_hub import login
-
+import numpy as np
 seed = 1
 
 random.seed(seed)
@@ -82,11 +82,6 @@ if __name__ == '__main__':
         random_influence_estimation(dataset = dataset, metrics_path = args.metrics_path)
 
         sys.exit()
-
-    elif args.inf_method == "BM25":
-
-        influence_inf = BM25_scores(dataset = dataset)
-
 
     elif args.inf_method == "EKFAC":
 
