@@ -51,11 +51,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-        ]
+        "q_proj",
+        # "k_proj",
+        "v_proj",
+        # "o_proj",
+    ]
 
     
     model_name = get_model_name(args.model)
@@ -82,6 +82,10 @@ if __name__ == '__main__':
         random_influence_estimation(dataset = dataset, metrics_path = args.metrics_path)
 
         sys.exit()
+
+    elif args.inf_method == "BM25":
+
+        influence_inf = BM25_scores(dataset = dataset)
 
     elif args.inf_method == "EKFAC":
 
@@ -120,10 +124,6 @@ if __name__ == '__main__':
             
 
     elif args.inf_method ==  "TracIn":
-
-        if "random" in args.model:
-            print("TracIn disabled for randomized models.")
-            sys.exit()
             
         tokenized_tr = get_preprocessed_dataset(
             tokenizer, dataset["train"], max_length=args.max_length

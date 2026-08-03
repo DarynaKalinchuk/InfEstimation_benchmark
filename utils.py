@@ -121,6 +121,7 @@ def collect_gradient(model, tokenizer, tokenized_tr, tokenized_val):
 
 
 def get_model_name(model_n):
+    
     if model_n == "Llama1":
         return "meta-llama/Llama-3.2-1B-Instruct"
 
@@ -131,10 +132,10 @@ def get_model_name(model_n):
 
     elif model_n == "QWEN1.5":
         return "Qwen/Qwen2.5-1.5B-Instruct"
-        
 
-    elif model_n == "randomLlama1":
-        return "meta-llama/Llama-3.2-1B-Instruct"
+        
+    elif model_n == "QWEN0.5":
+        return "Qwen/Qwen2.5-0.5B-Instruct"
         
 
     else:

@@ -640,6 +640,40 @@ def l_RelatIF(
     return df
 
 
+def BM25_scores(dataset):
+
+    print("Calculating BM25+ scores...")
+
+    train_texts = [
+        p + " " + r
+        for p, r in zip(
+            dataset["train"]["prompts"],
+            dataset["train"]["response"]
+        )
+    ]
+
+    test_texts = [
+        p + " " + r
+        for p, r in zip(
+            dataset["test"]["prompts"],
+            dataset["test"]["response"]
+        )
+    ]
+
+    tokenized_train = [x.lower().split(" ") for x in train_texts]
+    tokenized_test = [x.lower().split(" ") for x in test_texts]
+
+    bm25 = BM25Okapi(tokenized_train)
+
+    scores = []
+    for q in tqdm(tokenized_test):
+        scores.append(bm25.get_scores(q))
+
+    bm25_df = pd.DataFrame(scores)
+
+    return bm25_df
+
+
 
 def ekfac_influence_estimation(
                 tokenizer,

@@ -45,9 +45,9 @@ if __name__ == '__main__':
 
     target_modules=[
         "q_proj",
-        "k_proj",
+        # "k_proj",
         "v_proj",
-        "o_proj",
+        # "o_proj",
     ]
     
     model_name = get_model_name(args.model)
@@ -69,24 +69,6 @@ if __name__ == '__main__':
 
     for var in ["RANK", "LOCAL_RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"]:
         os.environ.pop(var, None)
-
-
-    if "random" in args.model:
-
-        lora_config = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=0.1,
-            target_modules=target_modules,
-            task_type="CAUSAL_LM",
-            init_lora_weights=False, #this does random init for lora A and B matrices (non-zero)
-        )
-
-        model = get_peft_model(model, lora_config)
-
-        model.save_pretrained(save_path)
-        print(f"Model saved to: {save_path}")
-        sys.exit()
 
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
