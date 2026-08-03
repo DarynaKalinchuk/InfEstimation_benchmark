@@ -22,7 +22,7 @@ The experiments were run using Python 3.11.14 on a single NVIDIA H100 80 GB GPU,
 
 ## Running experiments
 
-Fine-tune a model specified in scripts/finetune_params.txt, for datasets specified in scripts/dataset_settings.txt:
+Fine-tune a model specified in scripts/finetune_params.txt on datasets specified in scripts/dataset_settings.txt:
 
 ```bash
 sbatch finetune.sbatch
