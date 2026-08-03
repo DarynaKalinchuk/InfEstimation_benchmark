@@ -642,7 +642,7 @@ def l_RelatIF(
 
 def BM25_scores(dataset):
 
-    print("Calculating BM25+ scores...")
+    print("Calculating BM25 scores...")
 
     train_texts = [
         p + " " + r
