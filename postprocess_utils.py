@@ -13,6 +13,7 @@ from matplotlib.ticker import PercentFormatter
 from datasets import load_from_disk
 import pandas as pd
 from scipy.stats import gaussian_kde
+import math
 
 
 def run_benchmark_measures(
@@ -116,21 +117,29 @@ def run_benchmark_measures(
     return metrics
 
 
-
 def generate_table_metrics(
     source_dir="results/json",
     results_dir="results",
     figsize_scale=0.55,
+    max_columns=3,
     show=True,
 ):
     if not os.path.exists(source_dir):
         raise FileNotFoundError(f"Directory not found: {source_dir}")
+
+    if max_columns < 1:
+        raise ValueError("max_columns must be at least 1.")
 
     files = sorted(
         filename
         for filename in os.listdir(source_dir)
         if filename.endswith(".json")
     )
+
+    if not files:
+        raise ValueError(
+            f"No JSON files were found in {source_dir!r}."
+        )
 
     grouped = defaultdict(lambda: defaultdict(list))
 
@@ -140,7 +149,8 @@ def generate_table_metrics(
 
         if len(parts) < 2:
             raise ValueError(
-                f"Expected filename starting with model_dataset: {filename}"
+                f"Expected filename starting with "
+                f"model_dataset: {filename}"
             )
 
         dataset = parts[0]
@@ -158,10 +168,17 @@ def generate_table_metrics(
         with open(filepath, encoding="utf-8") as file:
             metrics = json.load(file)
 
-        grouped[dataset][model].append((experiment, metrics))
+        grouped[dataset][model].append(
+            (experiment, metrics)
+        )
 
-    metric_labels = ["Accuracy", "MAP", "Sparsity@5", "Runtime"]
-    col_names = ["Method"] + metric_labels
+    metric_labels = [
+        "Accuracy",
+        "MAP",
+        "Sparsity@5",
+        "Runtime",
+    ]
+    col_names = ["Method", *metric_labels]
 
     cmap = cm.get_cmap("RdYlGn")
     reverse_cmap = cm.get_cmap("RdYlGn_r")
@@ -175,35 +192,61 @@ def generate_table_metrics(
         )
 
         for exp_idx, (_, metrics) in enumerate(experiments):
-            values[exp_idx, 0] = metrics.get("accuracy", np.nan)
-            values[exp_idx, 1] = metrics.get("map", np.nan)
-            values[exp_idx, 2] = metrics.get("sparsity@5", np.nan)
-            values[exp_idx, 3] = metrics.get("time_elapsed", np.nan)
+            values[exp_idx, 0] = metrics.get(
+                "accuracy",
+                np.nan,
+            )
+            values[exp_idx, 1] = metrics.get(
+                "map",
+                np.nan,
+            )
+            values[exp_idx, 2] = metrics.get(
+                "sparsity@5",
+                np.nan,
+            )
+            values[exp_idx, 3] = metrics.get(
+                "time_elapsed",
+                np.nan,
+            )
 
         return values
 
     def create_table(ax, title, experiments):
-        experiment_labels = [experiment for experiment, _ in experiments]
+        experiment_labels = [
+            experiment
+            for experiment, _ in experiments
+        ]
         values = metrics_to_array(experiments)
 
         col_norms = []
 
         for column_index in range(values.shape[1]):
             if column_index < 3:
-                norm = Normalize(vmin=0, vmax=1, clip=True)
+                norm = Normalize(
+                    vmin=0,
+                    vmax=1,
+                    clip=True,
+                )
             else:
                 finite = values[:, column_index][
                     np.isfinite(values[:, column_index])
                 ]
 
-                if len(finite) and finite.min() != finite.max():
+                if (
+                    len(finite)
+                    and finite.min() != finite.max()
+                ):
                     norm = Normalize(
                         vmin=finite.min(),
                         vmax=finite.max(),
                         clip=True,
                     )
                 else:
-                    norm = Normalize(vmin=0, vmax=1, clip=True)
+                    norm = Normalize(
+                        vmin=0,
+                        vmax=1,
+                        clip=True,
+                    )
 
             col_norms.append(norm)
 
@@ -216,15 +259,20 @@ def generate_table_metrics(
                         if np.isnan(value)
                         else (
                             reverse_cmap(
-                                col_norms[column_index](value)
+                                col_norms[column_index](
+                                    value
+                                )
                             )
                             if column_index == 3
                             else cmap(
-                                col_norms[column_index](value)
+                                col_norms[column_index](
+                                    value
+                                )
                             )
                         )
                     )
-                    for column_index, value in enumerate(row)
+                    for column_index, value
+                    in enumerate(row)
                 ],
             ]
             for row in values
@@ -243,7 +291,8 @@ def generate_table_metrics(
                             else f"{value * 100:.2f}%"
                         )
                     )
-                    for column_index, value in enumerate(row)
+                    for column_index, value
+                    in enumerate(row)
                 ],
             ]
             for experiment_label, row in zip(
@@ -272,124 +321,23 @@ def generate_table_metrics(
             pad=15,
         )
 
-    figures = {}
+    def average_experiments(model_experiments):
+        metrics_by_experiment = defaultdict(list)
 
-    for dataset, model_experiments in grouped.items():
-        models = sorted(model_experiments)
-
-        if len(models) > 4:
-            raise ValueError(
-                f"Dataset {dataset!r} has {len(models)} models; "
-                "a maximum of four is supported."
-            )
-
-        if len(models) == 1:
-            nrows, ncols = 1, 1
-        elif len(models) == 2:
-            nrows, ncols = 1, 2
-        else:
-            nrows, ncols = 2, 2
-
-        max_experiments = max(
-            len(experiments)
-            for experiments in model_experiments.values()
-        )
-
-        fig, axes = plt.subplots(
-            nrows=nrows,
-            ncols=ncols,
-            figsize=(
-                8 * ncols,
-                max(4, max_experiments * figsize_scale + 2) * nrows,
-            ),
-            squeeze=False,
-        )
-
-        flat_axes = axes.ravel()
-
-        for ax, model in zip(flat_axes, models):
-            create_table(
-                ax,
-                model,
-                model_experiments[model],
-            )
-
-        for ax in flat_axes[len(models):]:
-            ax.axis("off")
-
-        fig.suptitle(
-            dataset.replace("_", " "),
-            fontsize=16,
-            y=0.99,
-        )
-
-        fig.tight_layout(rect=(0, 0, 1, 0.96))
-
-        output_path = os.path.join(
-            results_dir,
-            f"{dataset}_metrics_tables.png",
-        )
-
-        fig.savefig(
-            output_path,
-            bbox_inches="tight",
-            dpi=300,
-        )
-
-        figures[dataset] = fig
-
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-    datasets = sorted(grouped)
-
-    if len(datasets) > 3:
-        raise ValueError(
-            f"Found {len(datasets)} datasets; "
-            "the combined 3x2 plot supports at most three."
-        )
-
-    combined_data = {}
-
-    for dataset in datasets:
-        model_experiments = grouped[dataset]
-
-        random_models = [
-            model
-            for model in model_experiments
-            if "random" in model.lower()
-        ]
-
-        if len(random_models) != 1:
-            raise ValueError(
-                f"Dataset {dataset!r} must have exactly one model "
-                f"containing 'random'; found {len(random_models)}."
-            )
-
-        random_model = random_models[0]
-        regular_models = [
-            model
-            for model in model_experiments
-            if model != random_model
-        ]
-
-        if not regular_models:
-            raise ValueError(
-                f"Dataset {dataset!r} has no non-random models to average."
-            )
-
-        regular_by_experiment = defaultdict(list)
-
-        for model in regular_models:
-            for experiment, metrics in model_experiments[model]:
-                regular_by_experiment[experiment].append(metrics)
+        for experiments in model_experiments.values():
+            for experiment, metrics in experiments:
+                metrics_by_experiment[
+                    experiment
+                ].append(metrics)
 
         averaged_experiments = []
 
-        for experiment in sorted(regular_by_experiment):
-            experiment_metrics = regular_by_experiment[experiment]
+        for experiment in sorted(
+            metrics_by_experiment
+        ):
+            experiment_metrics = (
+                metrics_by_experiment[experiment]
+            )
             averaged_metrics = {}
 
             for key in (
@@ -416,73 +364,133 @@ def generate_table_metrics(
                 (experiment, averaged_metrics)
             )
 
-        random_experiments = sorted(
-            model_experiments[random_model],
-            key=lambda item: item[0],
+        return averaged_experiments
+
+    figures = {}
+
+    # Individual model tables for each dataset.
+    for dataset, model_experiments in grouped.items():
+        models = sorted(model_experiments)
+        num_models = len(models)
+
+        ncols = min(max_columns, num_models)
+        nrows = math.ceil(num_models / ncols)
+
+        max_experiments = max(
+            len(experiments)
+            for experiments
+            in model_experiments.values()
         )
 
-        combined_data[dataset] = (
-            averaged_experiments,
-            random_model,
-            random_experiments,
+        row_height = max(
+            4,
+            max_experiments * figsize_scale + 2,
         )
+
+        fig, axes = plt.subplots(
+            nrows=nrows,
+            ncols=ncols,
+            figsize=(
+                8 * ncols,
+                row_height * nrows,
+            ),
+            squeeze=False,
+        )
+
+        flat_axes = axes.ravel()
+
+        for ax, model in zip(flat_axes, models):
+            create_table(
+                ax,
+                model,
+                sorted(
+                    model_experiments[model],
+                    key=lambda item: item[0],
+                ),
+            )
+
+        for ax in flat_axes[num_models:]:
+            ax.axis("off")
+
+        fig.suptitle(
+            dataset.replace("_", " "),
+            fontsize=16,
+            y=0.99,
+        )
+
+        fig.tight_layout(
+            rect=(0, 0, 1, 0.96)
+        )
+
+        output_path = os.path.join(
+            results_dir,
+            f"{dataset}_metrics_tables.png",
+        )
+
+        fig.savefig(
+            output_path,
+            bbox_inches="tight",
+            dpi=300,
+        )
+
+        figures[dataset] = fig
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+    # Combined figure with one averaged table per dataset.
+    datasets = sorted(grouped)
+
+    combined_data = {
+        dataset: average_experiments(
+            grouped[dataset]
+        )
+        for dataset in datasets
+    }
 
     max_combined_experiments = max(
-        max(
-            len(averaged_experiments),
-            len(random_experiments),
-        )
-        for (
-            averaged_experiments,
-            _,
-            random_experiments,
-        ) in combined_data.values()
+        len(experiments)
+        for experiments in combined_data.values()
+    )
+
+    combined_row_height = max(
+        4,
+        max_combined_experiments
+        * figsize_scale
+        + 2,
     )
 
     combined_fig, combined_axes = plt.subplots(
-        nrows=3,
-        ncols=2,
+        nrows=len(datasets),
+        ncols=1,
         figsize=(
-            16,
-            max(
-                4,
-                max_combined_experiments * figsize_scale + 2,
-            )
-            * 3,
+            10,
+            combined_row_height * len(datasets),
         ),
         squeeze=False,
     )
 
     for row_index, dataset in enumerate(datasets):
-        (
-            averaged_experiments,
-            random_model,
-            random_experiments,
-        ) = combined_data[dataset]
-
         create_table(
             combined_axes[row_index, 0],
-            f"{dataset} — Average across models",
-            averaged_experiments,
+            (
+                f"{dataset} — "
+                "Average across all models"
+            ),
+            combined_data[dataset],
         )
-
-        create_table(
-            combined_axes[row_index, 1],
-            f"{dataset} — {random_model}",
-            random_experiments,
-        )
-
-    for row_index in range(len(datasets), 3):
-        combined_axes[row_index, 0].axis("off")
-        combined_axes[row_index, 1].axis("off")
 
     combined_fig.suptitle(
-        "Average Models vs Random Model",
+        "Average Metrics by Dataset",
         fontsize=16,
         y=0.995,
     )
 
-    combined_fig.tight_layout(rect=(0, 0, 1, 0.98))
+    combined_fig.tight_layout(
+        rect=(0, 0, 1, 0.98)
+    )
 
     combined_output_path = os.path.join(
         results_dir,
@@ -505,16 +513,18 @@ def generate_table_metrics(
 
 
 
-
-
 def generate_combined_plots(
     scores_dir="scores",
     results_dir="results/distr_plots",
     name_begin="Backdoor_1",
+    max_columns=3,
 ):
     scores_dir = Path(scores_dir)
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
+
+    if max_columns < 1:
+        raise ValueError("max_columns must be at least 1.")
 
     models = sorted(
         path.name
@@ -526,17 +536,9 @@ def generate_combined_plots(
         print(f"No model directories found in {scores_dir}.")
         return None
 
-    if len(models) > 4:
-        raise ValueError(
-            f"Found {len(models)} models; a maximum of four is supported."
-        )
-
-    if len(models) == 1:
-        nrows, ncols = 1, 1
-    elif len(models) == 2:
-        nrows, ncols = 1, 2
-    else:
-        nrows, ncols = 2, 2
+    num_models = len(models)
+    ncols = min(max_columns, num_models)
+    nrows = math.ceil(num_models / ncols)
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -551,11 +553,17 @@ def generate_combined_plots(
 
     for ax, model_n in zip(flat_axes, models):
         cache_dir = scores_dir / model_n
-        files = sorted(cache_dir.glob(name_begin + "*.csv"))
+        files = sorted(
+            cache_dir.glob(f"{name_begin}*.csv")
+        )
         model_generated = False
 
         for file in files:
-            method = file.stem.replace(name_begin, "")
+            method = file.stem.replace(
+                name_begin,
+                "",
+                1,
+            )
 
             if method == "BM25":
                 continue
@@ -578,7 +586,11 @@ def generate_combined_plots(
                 continue
 
             kde = gaussian_kde(values)
-            x = np.linspace(values.min(), values.max(), 1000)
+            x = np.linspace(
+                values.min(),
+                values.max(),
+                1000,
+            )
 
             line, = ax.plot(
                 x,
@@ -587,12 +599,17 @@ def generate_combined_plots(
                 label=method,
             )
 
-            legend_handles.setdefault(method, line)
+            legend_handles.setdefault(
+                method,
+                line,
+            )
             model_generated = True
 
         ax.set_xlabel("Value / Std")
         ax.set_ylabel("Density")
-        ax.set_title(model_n.replace("_", " "))
+        ax.set_title(
+            model_n.replace("_", " ")
+        )
 
         if not model_generated:
             ax.text(
@@ -606,11 +623,14 @@ def generate_combined_plots(
 
         generated_models += int(model_generated)
 
-    for ax in flat_axes[len(models):]:
+    for ax in flat_axes[num_models:]:
         ax.axis("off")
 
     if generated_models == 0:
-        print(f"No plots generated for {name_begin}; skipping.")
+        print(
+            f"No plots generated for "
+            f"{name_begin}; skipping."
+        )
         plt.close(fig)
         return None
 
@@ -621,19 +641,28 @@ def generate_combined_plots(
     )
 
     labels = list(legend_handles)
-    handles = [legend_handles[label] for label in labels]
+    handles = [
+        legend_handles[label]
+        for label in labels
+    ]
 
-    fig.legend(
-        handles,
-        labels,
-        loc="lower center",
-        ncol=min(len(labels), 5),
-        bbox_to_anchor=(0.5, 0.01),
+    if handles:
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            ncol=min(len(labels), 5),
+            bbox_to_anchor=(0.5, 0.01),
+        )
+
+    fig.tight_layout(
+        rect=(0, 0.08, 1, 0.96)
     )
 
-    fig.tight_layout(rect=(0, 0.08, 1, 0.96))
-
-    output_path = results_dir / f"{name_begin}_all_models_diagnostics.png"
+    output_path = (
+        results_dir
+        / f"{name_begin}_all_models_diagnostics.png"
+    )
 
     fig.savefig(
         output_path,
@@ -644,4 +673,3 @@ def generate_combined_plots(
     plt.close(fig)
 
     print(f"Saved plot to: {output_path}")
-

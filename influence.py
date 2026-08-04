@@ -83,9 +83,6 @@ if __name__ == '__main__':
 
         sys.exit()
 
-    elif args.inf_method == "BM25":
-
-        influence_inf = BM25_scores(dataset = dataset)
 
     elif args.inf_method == "EKFAC":
 
