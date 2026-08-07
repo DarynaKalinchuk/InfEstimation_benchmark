@@ -662,7 +662,7 @@ def ekfac_influence_estimation(
     model = prepare_model(model=model, task=task)
 
 
-    analyzer = Analyzer(analysis_name="ekfac_analysis_backdoor", model=model, task=task,
+    analyzer = Analyzer(analysis_name="ekfac_analysis", model=model, task=task,
                         output_dir=output_dir)
 
     collator = DataCollatorWithPadding(tokenizer=tokenizer, padding="longest", return_tensors="pt")  

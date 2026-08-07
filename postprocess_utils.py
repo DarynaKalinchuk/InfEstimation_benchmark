@@ -117,18 +117,73 @@ def run_benchmark_measures(
     return metrics
 
 
+
+def average_experiments(model_experiments):
+        metrics_by_experiment = defaultdict(list)
+
+        for experiments in model_experiments.values():
+            for experiment, metrics in experiments:
+                metrics_by_experiment[
+                    experiment
+                ].append(metrics)
+
+        averaged_experiments = []
+
+        for experiment in metrics_by_experiment:
+            experiment_metrics = (
+                metrics_by_experiment[experiment]
+            )
+            averaged_metrics = {}
+
+            for key in (
+                "accuracy",
+                "map",
+                "sparsity@5",
+                "time_elapsed",
+            ):
+                finite_values = [
+                    metrics[key]
+                    for metrics in experiment_metrics
+                    if key in metrics
+                    and metrics[key] is not None
+                    and np.isfinite(metrics[key])
+                ]
+
+                averaged_metrics[key] = (
+                    float(np.mean(finite_values))
+                    if finite_values
+                    else np.nan
+                )
+
+            averaged_experiments.append(
+                (experiment, averaged_metrics)
+            )
+
+        return averaged_experiments
+
+
 def generate_table_metrics(
     source_dir="results/json",
     results_dir="results",
     figsize_scale=0.55,
     max_columns=3,
-    show=True,
+    method_order = [
+        "EKFAC",
+        "LiSSA",
+        "theta_RelatIF",
+        "l_RelatIF",
+        "DataInf",
+        "TracIn",
+        "GradCos",
+        "GradDot",
+        "random"
+
+    ]
+    
 ):
     if not os.path.exists(source_dir):
         raise FileNotFoundError(f"Directory not found: {source_dir}")
 
-    if max_columns < 1:
-        raise ValueError("max_columns must be at least 1.")
 
     files = sorted(
         filename
@@ -146,12 +201,6 @@ def generate_table_metrics(
     for filename in files:
         stem = filename.removesuffix(".json")
         parts = stem.split("_")
-
-        if len(parts) < 2:
-            raise ValueError(
-                f"Expected filename starting with "
-                f"model_dataset: {filename}"
-            )
 
         dataset = parts[0]
         model = parts[1]
@@ -311,6 +360,80 @@ def generate_table_metrics(
             loc="center",
         )
 
+        # Bold method with maximum MAP
+        # Also bold the best method among those with strictly higher Accuracy
+
+        accuracy = values[:, 0]
+        map_scores = values[:, 1]
+
+        valid = np.isfinite(accuracy) & np.isfinite(map_scores)
+
+        if np.any(valid):
+            best_map = np.nanmax(map_scores[valid])
+
+            map_candidates = (
+                valid
+                & np.isclose(map_scores, best_map)
+            )
+
+            best_map_accuracy = np.nanmax(
+                accuracy[map_candidates]
+            )
+
+            best_map_rows = (
+                map_candidates
+                & np.isclose(
+                    accuracy,
+                    best_map_accuracy,
+                )
+            )
+
+            highlighted_rows = set(
+                np.where(best_map_rows)[0]
+            )
+
+            selected_idx = next(iter(highlighted_rows))
+            selected_accuracy = accuracy[selected_idx]
+
+            higher_accuracy = (
+                valid
+                & (accuracy > selected_accuracy)
+            )
+
+            if np.any(higher_accuracy):
+                highest_accuracy = np.nanmax(
+                    accuracy[higher_accuracy]
+                )
+
+                accuracy_candidates = (
+                    higher_accuracy
+                    & np.isclose(
+                        accuracy,
+                        highest_accuracy,
+                    )
+                )
+
+                best_candidate_map = np.nanmax(
+                    map_scores[accuracy_candidates]
+                )
+
+                best_accuracy_rows = (
+                    accuracy_candidates
+                    & np.isclose(
+                        map_scores,
+                        best_candidate_map,
+                    )
+                )
+
+                highlighted_rows.update(
+                    np.where(best_accuracy_rows)[0]
+                )
+
+            for row_idx in highlighted_rows:
+                table[
+                    (row_idx + 1, 0)
+                ].get_text().set_weight("bold")
+
         table.auto_set_font_size(False)
         table.set_fontsize(8)
         table.scale(1, 1.35)
@@ -321,50 +444,7 @@ def generate_table_metrics(
             pad=15,
         )
 
-    def average_experiments(model_experiments):
-        metrics_by_experiment = defaultdict(list)
-
-        for experiments in model_experiments.values():
-            for experiment, metrics in experiments:
-                metrics_by_experiment[
-                    experiment
-                ].append(metrics)
-
-        averaged_experiments = []
-
-        for experiment in sorted(
-            metrics_by_experiment
-        ):
-            experiment_metrics = (
-                metrics_by_experiment[experiment]
-            )
-            averaged_metrics = {}
-
-            for key in (
-                "accuracy",
-                "map",
-                "sparsity@5",
-                "time_elapsed",
-            ):
-                finite_values = [
-                    metrics[key]
-                    for metrics in experiment_metrics
-                    if key in metrics
-                    and metrics[key] is not None
-                    and np.isfinite(metrics[key])
-                ]
-
-                averaged_metrics[key] = (
-                    float(np.mean(finite_values))
-                    if finite_values
-                    else np.nan
-                )
-
-            averaged_experiments.append(
-                (experiment, averaged_metrics)
-            )
-
-        return averaged_experiments
+    
 
     figures = {}
 
@@ -405,7 +485,7 @@ def generate_table_metrics(
                 model,
                 sorted(
                     model_experiments[model],
-                    key=lambda item: item[0],
+                    key=lambda item: method_order.index(item[0]),
                 ),
             )
 
@@ -435,10 +515,7 @@ def generate_table_metrics(
 
         figures[dataset] = fig
 
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
+        plt.close(fig)
 
     # Combined figure with one averaged table per dataset.
     datasets = sorted(grouped)
@@ -479,7 +556,10 @@ def generate_table_metrics(
                 f"{dataset} — "
                 "Average across all models"
             ),
-            combined_data[dataset],
+            sorted(
+                combined_data[dataset],
+                key=lambda item: method_order.index(item[0]),
+            ),
         )
 
     combined_fig.suptitle(
@@ -505,10 +585,8 @@ def generate_table_metrics(
 
     figures["combined"] = combined_fig
 
-    if show:
-        plt.show()
-    else:
-        plt.close(combined_fig)
+    plt.close(fig)
+
 
 
 
@@ -565,8 +643,6 @@ def generate_combined_plots(
                 1,
             )
 
-            if method == "BM25":
-                continue
 
             df = pd.read_csv(file, index_col=0)
             X = df.to_numpy(dtype=float)
