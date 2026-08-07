@@ -453,8 +453,8 @@ def generate_table_metrics(
         models = sorted(model_experiments)
         num_models = len(models)
 
-        ncols = min(max_columns, num_models)
-        nrows = math.ceil(num_models / ncols)
+        ncols = 2
+        nrows = 2
 
         max_experiments = max(
             len(experiments)
@@ -615,8 +615,8 @@ def generate_combined_plots(
         return None
 
     num_models = len(models)
-    ncols = min(max_columns, num_models)
-    nrows = math.ceil(num_models / ncols)
+    ncols = 2
+    nrows = 2
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -681,7 +681,7 @@ def generate_combined_plots(
             )
             model_generated = True
 
-        ax.set_xlabel("Value / Std")
+        ax.set_xlabel("Scores / Std")
         ax.set_ylabel("Density")
         ax.set_title(
             model_n.replace("_", " ")

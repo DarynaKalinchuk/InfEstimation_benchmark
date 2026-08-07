@@ -134,7 +134,6 @@ def get_model_name(model_n):
         return "Qwen/Qwen2.5-1.5B-Instruct"
 
         
-
     elif model_n == "Gemma1":
         return "google/gemma-3-1b-it"
         
