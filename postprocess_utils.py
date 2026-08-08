@@ -418,6 +418,12 @@ def plot_method_differences(grouped, results_dir="results"):
     ]
     colors = ["#2F6BFF", "#8EC5FF", "#C8A2FF"]
 
+    os.makedirs(results_dir, exist_ok=True)
+    output_path = os.path.join(results_dir, "normalization_impact.pdf")
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
     plt.rcParams.update({
         "font.size": 8,
         "axes.labelsize": 9,
@@ -462,12 +468,24 @@ def plot_method_differences(grouped, results_dir="results"):
             subplot_differences.extend(d for d in differences if np.isfinite(d))
             offset = (comparison_idx - 1) * (width + 0.025)
 
-            ax.bar(
+            bars = ax.bar(
                 x + offset, differences, width=width,
                 label=f"RelDiff( {method_a}, {method_b} )",
                 color=colors[comparison_idx],
                 edgecolor="white", linewidth=0.5,
             )
+
+            for bar, value in zip(bars, differences):
+                if np.isfinite(value):
+                    ax.annotate(
+                        f"{100 * value:.1f}%",
+                        xy=(bar.get_x() + bar.get_width() / 2, value),
+                        xytext=(0, 2 if value >= 0 else -2),
+                        textcoords="offset points",
+                        ha="center",
+                        va="bottom" if value >= 0 else "top",
+                        fontsize=6,
+                    )
 
         ax.axhline(0, color="0.25", linewidth=0.8)
         ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
@@ -476,14 +494,16 @@ def plot_method_differences(grouped, results_dir="results"):
         ax.spines["right"].set_visible(False)
         ax.set_ylabel(metric_label)
         ax.yaxis.set_major_formatter(
-            plt.FuncFormatter(lambda y, _: f"{100 * y:.1f}%")
+            plt.FuncFormatter(lambda y, _: f"{100 * y:.0f}%")
         )
 
         if subplot_differences:
-            limit = max(abs(v) for v in subplot_differences) * 1.1
+            limit = max(abs(v) for v in subplot_differences) * 1.15
             if limit == 0:
                 limit = 0.01
+            limit = np.ceil(limit * 100) / 100
             ax.set_ylim(-limit, limit)
+            ax.set_yticks([-limit, limit])
 
     axes[-1].set_xticks(x)
     axes[-1].set_xticklabels(
@@ -505,13 +525,7 @@ def plot_method_differences(grouped, results_dir="results"):
 
     fig.suptitle("Normalization Impact", fontsize=13, y=0.985)
     fig.tight_layout(rect=[0, 0, 1, 0.91])
-    fig.subplots_adjust(hspace=0.15)
-
-    os.makedirs(results_dir, exist_ok=True)
-    output_path = os.path.join(results_dir, "normalization_impact.pdf")
-
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    fig.subplots_adjust(hspace=0.3)
 
     fig.savefig(output_path, bbox_inches="tight", dpi=300)
     plt.close(fig)
