@@ -459,8 +459,10 @@ def plot_method_differences(grouped, results_dir="results"):
                 value_a = methods.get(method_a, {}).get(metric_key, np.nan)
                 value_b = methods.get(method_b, {}).get(metric_key, np.nan)
                 difference = (
-                    (value_a - value_b) / value_b
-                    if np.isfinite(value_a) and np.isfinite(value_b) and value_b != 0
+                    (value_a - value_b) / (1 - value_b)
+                    if np.isfinite(value_a)
+                    and np.isfinite(value_b)
+                    and value_b != 1
                     else np.nan
                 )
                 differences.append(difference)
@@ -470,7 +472,7 @@ def plot_method_differences(grouped, results_dir="results"):
 
             bars = ax.bar(
                 x + offset, differences, width=width,
-                label=f"RelDiff( {method_a}, {method_b} )",
+                label=f"RER( {method_a}, {method_b} )",
                 color=colors[comparison_idx],
                 edgecolor="white", linewidth=0.5,
             )
@@ -480,7 +482,7 @@ def plot_method_differences(grouped, results_dir="results"):
                     ax.annotate(
                         f"{100 * value:.1f}%",
                         xy=(bar.get_x() + bar.get_width() / 2, value),
-                        xytext=(0, 2 if value >= 0 else -2),
+                        xytext=(0, 0.5 if value >= 0 else -0.5),
                         textcoords="offset points",
                         ha="center",
                         va="bottom" if value >= 0 else "top",
