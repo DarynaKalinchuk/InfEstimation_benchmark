@@ -390,8 +390,8 @@ def LiSSA(
         hyperparams = {}
 
     lambda_const_param = float(hyperparams.get("lambda_const_param", 0.1))
-    n_iteration = int(hyperparams.get("n_iteration", 10))
-    alpha_const = float(hyperparams.get("alpha_const", 1.0))
+    n_iteration = int(hyperparams.get("n_iteration", 20))
+    alpha_const = float(hyperparams.get("alpha_const", 0.001))
 
     print("Calculating influence with LiSSA.")
     print(
@@ -437,7 +437,7 @@ def LiSSA(
             dots = running_hvp @ Gt.T
             hvp_tmp = (
                 dots @ Gt + lambda_const * running_hvp
-            ) / n_train / 1e3
+            ) / n_train
 
             running_hvp = Gv + running_hvp - alpha_const * hvp_tmp
 
@@ -645,6 +645,7 @@ def ekfac_influence_estimation(
                 model,
                 tokenized_tr,
                 tokenized_val,
+                analysis_name,
                 batch_size=10,
                 output_dir="results/EKFAC",
                 factor_strategy="ekfac",
@@ -661,8 +662,7 @@ def ekfac_influence_estimation(
     
     model = prepare_model(model=model, task=task)
 
-
-    analyzer = Analyzer(analysis_name="ekfac_analysis", model=model, task=task,
+    analyzer = Analyzer(analysis_name=analysis_name, model=model, task=task,
                         output_dir=output_dir)
 
     collator = DataCollatorWithPadding(tokenizer=tokenizer, padding="longest", return_tensors="pt")  
@@ -670,8 +670,6 @@ def ekfac_influence_estimation(
     analyzer.set_dataloader_kwargs(dataloader_kwargs)
 
     factor_args = FactorArguments(strategy=factor_strategy)
-
-
 
     analyzer.fit_all_factors(factors_name=factor_strategy, 
                          dataset=tokenized_tr,
@@ -686,7 +684,6 @@ def ekfac_influence_estimation(
         damping_factor=None,
     )
 
-
     analyzer.compute_pairwise_scores(
         score_args = score_args,
         scores_name=factor_strategy,
@@ -697,7 +694,6 @@ def ekfac_influence_estimation(
         per_device_train_batch_size=batch_size,
         overwrite_output_dir=True,
     )
-
 
     scores = analyzer.load_pairwise_scores(scores_name=factor_strategy)["all_modules"]
     print(f"Scores shape: {scores.shape}")
