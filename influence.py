@@ -113,6 +113,7 @@ if __name__ == '__main__':
                                             tokenized_tr,
                                             tokenized_val,
                                             output_dir="results/EKFAC",
+                                            analysis_name = "ekfac_"+ args.model + "_" +args.dataset,
                                             factor_strategy = "ekfac",
                                             target_modules=target_modules)
 

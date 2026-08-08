@@ -75,4 +75,4 @@ while read -r DATASET_NAME; do
 
 done < settings_txt/dataset_settings.txt
 
-python3 -c "from postprocess_utils import generate_table_metrics; generate_table_metrics()"
+python3 -c "from postprocess_utils import generate_table_metrics, plot_method_differences; grouped = generate_table_metrics(); plot_method_differences(grouped)"

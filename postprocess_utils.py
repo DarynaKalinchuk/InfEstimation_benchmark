@@ -297,6 +297,8 @@ def generate_table_metrics(
         )
 
         output_path = os.path.join(results_dir, f"{dataset}_metrics_tables.pdf")
+        if os.path.exists(output_path):
+            os.remove(output_path)
         fig.savefig(output_path, bbox_inches="tight", dpi=300)
         plt.close(fig)
 
@@ -313,7 +315,7 @@ def generate_table_metrics(
     for i, dataset in enumerate(datasets):
         create_table(
             combined_axes[i, 0],
-            f"{dataset}\n(average across all models)",
+            f"{dataset}",
             sorted(combined_data[dataset], key=lambda item: method_order.index(item[0]))
         )
 
@@ -322,8 +324,12 @@ def generate_table_metrics(
     )
 
     combined_output_path = os.path.join(results_dir, "combined_metrics_tables.pdf")
+    if os.path.exists(combined_output_path):
+        os.remove(combined_output_path)
+
     combined_fig.savefig(combined_output_path, bbox_inches="tight", dpi=300)
     plt.close(fig)
+    return grouped
 
 
 
@@ -395,6 +401,118 @@ def generate_combined_plots(scores_dir="scores", results_dir="results/distr_plot
 
     fig.tight_layout(rect=(0, 0.08, 1, 0.96))
     output_path = results_dir / f"{name_begin}_all_models_diagnostics.pdf"
+    if os.path.exists(output_path):
+        os.remove(output_path)
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved plot to: {output_path}")
+
+
+def plot_method_differences(grouped, results_dir="results"):
+    metric_keys = ["accuracy", "map", "sparsity@5"]
+    metric_labels = ["Accuracy", "MAP", "Sparsity@5"]
+    comparisons = [
+        ("l_RelatIF", "DataInf"),
+        ("theta_RelatIF", "DataInf"),
+        ("GradCos", "GradDot"),
+    ]
+    colors = ["#2F6BFF", "#8EC5FF", "#C8A2FF"]
+
+    plt.rcParams.update({
+        "font.size": 8,
+        "axes.labelsize": 9,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 7,
+    })
+
+    datasets = sorted(grouped)
+    averaged = {
+        dataset: dict(average_experiments(grouped[dataset]))
+        for dataset in datasets
+    }
+
+    dataset_spacing = 0.75
+    x = np.arange(len(datasets)) * dataset_spacing
+    width = 0.16
+
+    fig, axes = plt.subplots(
+        nrows=3, ncols=1, figsize=(6.2, 6.2),
+        sharex=True, sharey=False,
+    )
+
+    for metric_idx, (metric_key, metric_label) in enumerate(zip(metric_keys, metric_labels)):
+        ax = axes[metric_idx]
+        subplot_differences = []
+
+        for comparison_idx, (method_a, method_b) in enumerate(comparisons):
+            differences = []
+
+            for dataset in datasets:
+                methods = averaged[dataset]
+                value_a = methods.get(method_a, {}).get(metric_key, np.nan)
+                value_b = methods.get(method_b, {}).get(metric_key, np.nan)
+                difference = (
+                    value_a - value_b
+                    if np.isfinite(value_a) and np.isfinite(value_b)
+                    else np.nan
+                )
+                differences.append(difference)
+
+            subplot_differences.extend(d for d in differences if np.isfinite(d))
+            offset = (comparison_idx - 1) * (width + 0.025)
+
+            ax.bar(
+                x + offset, differences, width=width,
+                label=f"{method_a} − {method_b}",
+                color=colors[comparison_idx],
+                edgecolor="white", linewidth=0.5,
+            )
+
+        ax.axhline(0, color="0.25", linewidth=0.8)
+        ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
+        ax.set_axisbelow(True)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_ylabel(metric_label)
+        ax.yaxis.set_major_formatter(
+            plt.FuncFormatter(lambda y, _: f"{100 * y:.1f}%")
+        )
+
+        if subplot_differences:
+            limit = max(abs(v) for v in subplot_differences) * 1.1
+            if limit == 0:
+                limit = 0.01
+            ax.set_ylim(-limit, limit)
+
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels(
+        [dataset.replace("_", " ") for dataset in datasets],
+        rotation=20, ha="right",
+    )
+
+    for ax in axes:
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles, labels, loc="upper center",
+        bbox_to_anchor=(0.5, 0.945),
+        ncol=3, frameon=False,
+    )
+
+    fig.suptitle("Normalization Impact", fontsize=13, y=0.985)
+    fig.tight_layout(rect=[0, 0, 1, 0.91])
+    fig.subplots_adjust(hspace=0.15)
+
+    os.makedirs(results_dir, exist_ok=True)
+    output_path = os.path.join(results_dir, "normalization_impact.pdf")
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+    fig.savefig(output_path, bbox_inches="tight", dpi=300)
+    plt.close(fig)
+    return output_path
