@@ -22,14 +22,23 @@ The experiments were run using Python 3.11.14 on a single NVIDIA H100 80 GB GPU,
 
 ## Running experiments
 
-Fine-tune a model specified in scripts/finetune_params.txt on datasets specified in scripts/dataset_settings.txt:
+1. Fine-tune a model specified in scripts/finetune_params.txt on datasets specified in scripts/dataset_settings.txt:
 
 ```bash
 sbatch finetune.sbatch
 ```
 
-Estimate and process influence scores on the trained LoRa weights of the model specified in scripts/finetune_params.txt, for datasets specified in scripts/dataset_settings.txt:
+2. Estimate and process influence scores on the trained LoRa weights of the model specified in scripts/finetune_params.txt, for datasets specified in scripts/dataset_settings.txt:
 
 ```bash
 sbatch influence.sbatch
 ```
+
+Alternatively, one can use 
+
+```bash
+sbatch combined.sbatch
+```
+
+to run the fine-tuning and influence estimation in one step.
+
